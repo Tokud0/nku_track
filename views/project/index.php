@@ -38,7 +38,7 @@ $statusLabels = [
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1><?= Html::encode($this->title) ?></h1>
-        <?php if ($user->role === User::ROLE_MANAGER || $user->role === User::ROLE_ADMIN): ?>
+        <?php if ($user->role === User::ROLE_RECTOR || $user->role === User::ROLE_ADMIN): ?>
             <?= Html::a('Создать проект', ['create'], ['class' => 'btn btn-success']) ?>
         <?php endif; ?>
     </div>
@@ -153,10 +153,10 @@ $statusLabels = [
                                 </div>
                             <?php endif; ?>
                             
-                            <?php if (!empty($project->executors)): ?>
+                            <?php if ($project->department): ?>
                                 <div class="mb-2">
                                     <small class="text-muted">
-                                        <strong>Исполнители:</strong> <?= count($project->executors) ?>
+                                        <strong>Подразделение:</strong> <?= Html::encode($project->department->name) ?>
                                     </small>
                                 </div>
                             <?php endif; ?>
@@ -164,7 +164,20 @@ $statusLabels = [
                         <div class="card-footer bg-transparent">
                             <div class="btn-group w-100" role="group">
                                 <?= Html::a('Просмотр', ['view', 'id' => (string)$project->_id], ['class' => 'btn btn-sm btn-info']) ?>
-                                <?php if (($user->role === User::ROLE_MANAGER && (string)$project->manager_id === (string)$user->_id) || $user->role === User::ROLE_ADMIN): ?>
+                                <?php 
+                                $canEditProjectInList = false;
+                                if ($user->role === User::ROLE_ADMIN) {
+                                    $canEditProjectInList = true;
+                                } elseif ($user->role === User::ROLE_RECTOR && 
+                                          $project->department_id && $user->department_id &&
+                                          (string)$project->department_id === (string)$user->department_id) {
+                                    $canEditProjectInList = true;
+                                } elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) &&
+                                          $project->department_id && $user->department_id &&
+                                          (string)$project->department_id === (string)$user->department_id) {
+                                    $canEditProjectInList = true;
+                                }
+                                if ($canEditProjectInList): ?>
                                     <?= Html::a('Редактировать', ['update', 'id' => (string)$project->_id], ['class' => 'btn btn-sm btn-primary']) ?>
                                 <?php endif; ?>
                             </div>

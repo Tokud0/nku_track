@@ -16,15 +16,17 @@ use app\models\Task;
  * @property string $password_hash
  * @property string $role rector / manager / executor / admin
  * @property \MongoDB\BSON\ObjectId|null $department_id ссылка на подразделение
+ * @property \MongoDB\BSON\ObjectId|null $subdepartment_id ссылка на департамент внутри подразделения
  * @property \MongoDB\BSON\UTCDateTime $created_at
  * @property \MongoDB\BSON\UTCDateTime $updated_at
  */
 class User extends ActiveRecord implements IdentityInterface
 {
-    const ROLE_RECTOR = 'rector';
-    const ROLE_MANAGER = 'manager';
-    const ROLE_EXECUTOR = 'executor';
     const ROLE_ADMIN = 'admin';
+    const ROLE_RECTOR = 'rector'; // Руководитель - может создать проект для своего подразделения
+    const ROLE_TOP_MANAGER = 'top_manager'; // Топ-менеджер - может сделать ТЗ для проектов, редактировать его
+    const ROLE_MANAGER = 'manager'; // Менеджер - создавать задачи и назначать исполнителей
+    const ROLE_EXECUTOR = 'executor'; // Исполнитель - видит задачи, перемещает их по доске
 
     /**
      * @return string the name of the index associated with this ActiveRecord class.
@@ -51,6 +53,7 @@ class User extends ActiveRecord implements IdentityInterface
             'password_hash',
             'role',
             'department_id',
+            'subdepartment_id',
             'created_at',
             'updated_at',
         ];
@@ -75,9 +78,11 @@ class User extends ActiveRecord implements IdentityInterface
             [['email'], 'unique', 'when' => function($model) {
                 return $model->isNewRecord || $model->isAttributeChanged('email');
             }],
-            [['role'], 'in', 'range' => [self::ROLE_RECTOR, self::ROLE_MANAGER, self::ROLE_EXECUTOR, self::ROLE_ADMIN]],
+            [['role'], 'in', 'range' => [self::ROLE_ADMIN, self::ROLE_RECTOR, self::ROLE_TOP_MANAGER, self::ROLE_MANAGER, self::ROLE_EXECUTOR]],
             [['fio', 'email', 'password_hash', 'role'], 'string'],
             [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
+            [['subdepartment_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
+            [['subdepartment_id'], 'validateSubdepartment'],
             [['password'], 'string', 'min' => 6, 'skipOnEmpty' => true],
             [['created_at', 'updated_at'], 'safe'],
         ];
@@ -96,9 +101,28 @@ class User extends ActiveRecord implements IdentityInterface
             'password_hash' => 'Хэш пароля',
             'role' => 'Роль',
             'department_id' => 'Подразделение',
+            'subdepartment_id' => 'Департамент',
             'created_at' => 'Дата создания',
             'updated_at' => 'Дата обновления',
         ];
+    }
+
+    /**
+     * Валидация: департамент должен принадлежать выбранному подразделению
+     */
+    public function validateSubdepartment($attribute, $params)
+    {
+        if ($this->subdepartment_id && $this->department_id) {
+            $subdepartment = Department::findOne(['_id' => $this->subdepartment_id]);
+            if ($subdepartment) {
+                // Департамент должен быть дочерним элементом выбранного подразделения
+                if ((string)$subdepartment->parent_id !== (string)$this->department_id) {
+                    $this->addError($attribute, 'Выбранный департамент не принадлежит выбранному подразделению.');
+                }
+            }
+        } elseif ($this->subdepartment_id && !$this->department_id) {
+            $this->addError($attribute, 'Для привязки к департаменту необходимо выбрать подразделение.');
+        }
     }
 
     /**
@@ -213,15 +237,6 @@ class User extends ActiveRecord implements IdentityInterface
         return $this->hasMany(Project::class, ['manager_id' => '_id']);
     }
 
-    /**
-     * Gets projects where user is executor
-     *
-     * @return \yii\mongodb\ActiveQuery
-     */
-    public function getProjectsAsExecutor()
-    {
-        return Project::find()->where(['executors' => ['$in' => [$this->_id]]]);
-    }
 
     /**
      * Gets department
@@ -231,6 +246,16 @@ class User extends ActiveRecord implements IdentityInterface
     public function getDepartment()
     {
         return $this->hasOne(Department::class, ['_id' => 'department_id']);
+    }
+
+    /**
+     * Gets subdepartment
+     *
+     * @return \yii\mongodb\ActiveQuery
+     */
+    public function getSubdepartment()
+    {
+        return $this->hasOne(Department::class, ['_id' => 'subdepartment_id']);
     }
 
     /**

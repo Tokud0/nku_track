@@ -39,9 +39,13 @@ $this->params['breadcrumbs'][] = $this->title;
             Project::STATUS_FROZEN => 'Заморожен',
         ]) ?>
 
-        <?php if (Yii::$app->user->identity->role === \app\models\User::ROLE_ADMIN || Yii::$app->user->identity->role === \app\models\User::ROLE_RECTOR): ?>
+        <?php if (Yii::$app->user->identity->role === \app\models\User::ROLE_ADMIN): ?>
             <?php
-            $departments = \app\models\Department::find()->all();
+            // Админ может выбрать любое подразделение
+            $departments = \app\models\Department::find()
+                ->where(['parent_id' => null])
+                ->orderBy(['name' => SORT_ASC])
+                ->all();
             $departmentList = [];
             foreach ($departments as $dept) {
                 $departmentList[(string)$dept->_id] = $dept->name;
@@ -51,6 +55,18 @@ $this->params['breadcrumbs'][] = $this->title;
                 $departmentList,
                 ['prompt' => 'Выберите подразделение']
             ) ?>
+        <?php elseif (Yii::$app->user->identity->role === \app\models\User::ROLE_RECTOR): ?>
+            <?php
+            // Ректор видит только свое подразделение (автоматически установится в контроллере)
+            $userDept = Yii::$app->user->identity->department;
+            ?>
+            <div class="form-group">
+                <label class="control-label">Подразделение</label>
+                <div>
+                    <?= $userDept ? Html::encode($userDept->name) : '<span class="text-muted">Не указано</span>' ?>
+                </div>
+                <small class="form-text text-muted">Подразделение будет установлено автоматически</small>
+            </div>
         <?php endif; ?>
 
         <div class="form-group">

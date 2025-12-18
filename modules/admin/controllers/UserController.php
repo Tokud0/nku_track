@@ -87,6 +87,13 @@ class UserController extends Controller
                 $model->department_id = null;
             }
             
+            // Конвертируем subdepartment_id в ObjectId если это строка
+            if (!empty($_POST['User']['subdepartment_id'])) {
+                $model->subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['User']['subdepartment_id']);
+            } else {
+                $model->subdepartment_id = null;
+            }
+            
             // Пароль обязателен при создании
             if (empty($model->password)) {
                 $model->addError('password', 'Пароль не может быть пустым.');
@@ -123,6 +130,13 @@ class UserController extends Controller
                 $model->department_id = new \MongoDB\BSON\ObjectId($_POST['User']['department_id']);
             } else {
                 $model->department_id = null;
+            }
+            
+            // Конвертируем subdepartment_id в ObjectId если это строка
+            if (!empty($_POST['User']['subdepartment_id'])) {
+                $model->subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['User']['subdepartment_id']);
+            } else {
+                $model->subdepartment_id = null;
             }
             
             // Если пароль изменен, обновляем хэш

@@ -1,88 +1,366 @@
-main > .container {
-    padding: 70px 15px 20px;
+/* Общие стили */
+:root {
+    --primary-color: #6B8E9F;
+    --secondary-color: #8B9A9F;
+    --success-color: #7FB069;
+    --info-color: #7DB4B5;
+    --warning-color: #D4A574;
+    --danger-color: #C97D60;
+    --light-color: #F5F3F0;
+    --dark-color: #4A4A4A;
+    --warm-bg: #FAF8F5;
+    --warm-card: #FFFFFF;
+    --warm-border: #E8E5E0;
 }
 
-.footer {
-    background-color: #f5f5f5;
-    font-size: .9em;
-    height: 60px;
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--warm-bg);
+    color: #5A5A5A;
 }
 
-.footer > .container {
-    padding-right: 15px;
-    padding-left: 15px;
+/* Навигация */
+.navbar-brand {
+    font-weight: 600;
+    color: #FFFFFF !important;
 }
 
-.not-set {
-    color: #c55;
-    font-style: italic;
+.navbar-nav .nav-link {
+    padding: 0.5rem 1rem;
+    transition: background-color 0.2s;
+    color: rgba(255, 255, 255, 0.9) !important;
 }
 
-/* add sorting icons to gridview sort links */
-a.asc:after, a.desc:after {
-    content: '';
-    left: 3px;
-    display: inline-block;
-    width: 0;
-    height: 0;
-    border: solid 5px transparent;
-    margin: 4px 4px 2px 4px;
-    background: transparent;
+.navbar-nav .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: 0.25rem;
+    color: #FFFFFF !important;
 }
 
-a.asc:after {
-    border-bottom: solid 7px #212529;
-    border-top-width: 0;
+.dropdown-menu {
+    border: none;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
 }
 
-a.desc:after {
-    border-top: solid 7px #212529;
-    border-bottom-width: 0;
+.dropdown-item {
+    padding: 0.5rem 1rem;
+    transition: background-color 0.2s;
 }
 
-.grid-view th {
-    white-space: nowrap;
+.dropdown-item:hover {
+    background-color: #f8f9fa;
 }
 
-.hint-block {
-    display: block;
-    margin-top: 5px;
-    color: #999;
+/* Карточки */
+.card {
+    border-radius: 0.75rem;
+    border: 1px solid var(--warm-border);
+    background-color: var(--warm-card);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-.error-summary {
-    color: #a94442;
-    background: #fdf7f7;
-    border-left: 3px solid #eed3d7;
-    padding: 10px 20px;
-    margin: 0 0 15px 0;
+.card-header {
+    border-bottom: 1px solid var(--warm-border);
+    font-weight: 600;
+    background-color: #FAFAFA;
+    color: #5A5A5A;
 }
 
-/* align the logout "link" (button in form) of the navbar */
-.nav li > form > button.logout {
-    padding-top: 7px;
-    color: rgba(255, 255, 255, 0.5);
+/* Кнопки */
+.btn {
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    border: none;
 }
 
-@media(max-width:767px) {
-    .nav li > form > button.logout {
-        display:block;
-        text-align: left;
-        width: 100%;
-        padding: 10px 0;
+.btn-primary {
+    background-color: var(--primary-color);
+    color: #FFFFFF;
+}
+
+.btn-primary:hover {
+    background-color: #5A7A8A;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(107, 142, 159, 0.3);
+}
+
+.btn-success {
+    background-color: var(--success-color);
+    color: #FFFFFF;
+}
+
+.btn-success:hover {
+    background-color: #6A9D5A;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(127, 176, 105, 0.3);
+}
+
+.btn-info {
+    background-color: var(--info-color);
+    color: #FFFFFF;
+}
+
+.btn-info:hover {
+    background-color: #6A9A9B;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(125, 180, 181, 0.3);
+}
+
+.btn-secondary {
+    background-color: var(--secondary-color);
+    color: #FFFFFF;
+}
+
+.btn-secondary:hover {
+    background-color: #7A8A8F;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 154, 159, 0.3);
+}
+
+.btn-block {
+    width: 100%;
+}
+
+/* Бейджи */
+.badge {
+    padding: 0.35em 0.65em;
+    font-weight: 500;
+}
+
+/* Формы */
+.form-control {
+    border-radius: 0.5rem;
+    border: 1px solid var(--warm-border);
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    background-color: #FFFFFF;
+}
+
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(107, 142, 159, 0.15);
+    background-color: #FFFFFF;
+}
+
+/* Таблицы */
+.table {
+    background-color: var(--warm-card);
+}
+
+.table thead th {
+    border-bottom: 2px solid var(--warm-border);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.875rem;
+    color: #7A7A7A;
+    background-color: #FAFAFA;
+}
+
+/* Хлебные крошки */
+.breadcrumb {
+    background-color: transparent;
+    padding: 0;
+    margin-bottom: 1rem;
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+    content: "›";
+    color: #6c757d;
+}
+
+/* Алерты */
+.alert {
+    border-radius: 0.5rem;
+    border: none;
+}
+
+/* Списки */
+.list-group-item {
+    border: none;
+    border-bottom: 1px solid var(--warm-border);
+    padding: 0.75rem 1rem;
+    background-color: transparent;
+}
+
+.list-group-item:last-child {
+    border-bottom: none;
+}
+
+.list-group-item:hover {
+    background-color: #F8F6F3;
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 
-.nav > li > form > button.logout:focus,
-.nav > li > form > button.logout:hover {
-    text-decoration: none;
-    color: rgba(255, 255, 255, 0.75);
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
 }
 
-.nav > li > form > button.logout:focus {
-    outline: none;
+/* Бейджи с мягкими цветами */
+.badge-danger {
+    background-color: var(--danger-color);
+    color: #FFFFFF;
 }
 
-.form-group {
-    margin-bottom: 1rem;
+.badge-warning {
+    background-color: var(--warning-color);
+    color: #FFFFFF;
+}
+
+.badge-primary {
+    background-color: var(--primary-color);
+    color: #FFFFFF;
+}
+
+.badge-info {
+    background-color: var(--info-color);
+    color: #FFFFFF;
+}
+
+.badge-success {
+    background-color: var(--success-color);
+    color: #FFFFFF;
+}
+
+.badge-secondary {
+    background-color: var(--secondary-color);
+    color: #FFFFFF;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+}
+
+/* Кастомные стили для проекта */
+.project-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.project-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+
+.task-card {
+    transition: all 0.2s;
+}
+
+.task-card:hover {
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+/* Прогресс бары */
+.progress {
+    height: 0.5rem;
+    border-radius: 0.25rem;
+    background-color: #e9ecef;
+}
+
+.progress-bar {
+    border-radius: 0.25rem;
+}
+
+/* Иконки */
+.fas, .far {
+    margin-right: 0.25rem;
+}
+
+/* Футер */
+footer {
+    margin-top: auto;
+    background-color: #F5F3F0 !important;
+    border-top: 1px solid var(--warm-border);
+}
+
+footer .text-muted {
+    color: #8A8A8A !important;
+}
+
+/* Улучшения для контейнера */
+.container-fluid {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Тени */
+.shadow-sm {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+.shadow {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+.shadow-lg {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Стили для главной страницы */
+.site-index .card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    background-color: var(--warm-card);
+}
+
+.site-index .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1) !important;
+}
+
+.site-index .list-group-item {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--warm-border);
+}
+
+.site-index .list-group-item:hover {
+    background-color: #F8F6F3;
+    border-radius: 0.5rem;
+}
+
+.site-index .list-group-item:last-child {
+    border-bottom: none;
+}
+
+/* Статистические карточки */
+.site-index .card-body h2 {
+    color: var(--dark-color);
+    font-weight: 600;
+}
+
+.site-index .card-body h6 {
+    color: #8A8A8A;
+    font-weight: 500;
+}
+
+.site-index .text-primary {
+    color: var(--primary-color) !important;
+}
+
+.site-index .text-success {
+    color: var(--success-color) !important;
+}
+
+.site-index .text-info {
+    color: var(--info-color) !important;
+}
+
+.site-index .text-warning {
+    color: var(--warning-color) !important;
 }

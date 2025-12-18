@@ -14,7 +14,25 @@ $this->params['breadcrumbs'][] = ['label' => $model->title, 'url' => ['project/v
 $this->params['breadcrumbs'][] = 'Канбан-доска';
 
 $user = Yii::$app->user->identity;
-$tasks = Task::find()->where(['project_id' => $model->_id])->all();
+$tasksQuery = Task::find()->where(['project_id' => $model->_id]);
+
+// Фильтруем задачи по видимости для исполнителя
+if ($user->role === User::ROLE_EXECUTOR) {
+    $allTasks = Task::find()->where(['project_id' => $model->_id])->all();
+    $visibleTaskIds = [];
+    foreach ($allTasks as $task) {
+        if ($task->isAssignedToUser($user)) {
+            $visibleTaskIds[] = $task->_id;
+        }
+    }
+    if (!empty($visibleTaskIds)) {
+        $tasksQuery->andWhere(['_id' => ['$in' => $visibleTaskIds]]);
+    } else {
+        $tasksQuery->andWhere(['_id' => ['$in' => []]]); // Пустой результат
+    }
+}
+
+$tasks = $tasksQuery->all();
 $tasksByStatus = [
     Task::STATUS_TODO => [],
     Task::STATUS_IN_PROGRESS => [],
@@ -37,9 +55,10 @@ foreach ($tasks as $task) {
             <p class="text-muted mb-0">Канбан-доска задач</p>
         </div>
         <div>
-            <?php if (($user->role === User::ROLE_MANAGER && (string)$model->manager_id === (string)$user->_id) || 
-                      $user->role === User::ROLE_ADMIN || 
-                      $user->role === User::ROLE_RECTOR): ?>
+            <?php 
+            // Менеджер, топ-менеджер, ректор и админ могут создавать задачи
+            $canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+            if ($canCreateTask): ?>
                 <?= Html::a('Создать задачу', ['task/create', 'project_id' => (string)$model->_id], ['class' => 'btn btn-success']) ?>
             <?php endif; ?>
             <?= Html::a('Вернуться к проекту', ['project/view', 'id' => (string)$model->_id], ['class' => 'btn btn-secondary']) ?>

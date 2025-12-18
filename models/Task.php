@@ -6,6 +6,7 @@ use yii\mongodb\ActiveRecord;
 use Yii;
 use app\models\Project;
 use app\models\User;
+use app\models\Department;
 
 /**
  * Task model
@@ -16,7 +17,9 @@ use app\models\User;
  * @property string $description описание задачи
  * @property string $status todo | in_progress | review | done | canceled
  * @property string $priority low | medium | high | critical
- * @property \MongoDB\BSON\ObjectId|null $executor_id кто делает задачу (исполнитель)
+ * @property \MongoDB\BSON\ObjectId|null $executor_user_from_department_id пользователь из подразделения
+ * @property \MongoDB\BSON\ObjectId|null $executor_subdepartment_id департамент из подразделения
+ * @property \MongoDB\BSON\ObjectId|null $executor_user_from_subdepartment_id пользователь из департамента
  * @property \MongoDB\BSON\ObjectId $creator_id кто создал (руководитель)
  * @property \MongoDB\BSON\UTCDateTime|null $start_date
  * @property \MongoDB\BSON\UTCDateTime|null $due_date
@@ -58,7 +61,9 @@ class Task extends ActiveRecord
             'description',
             'status',
             'priority',
-            'executor_id',
+            'executor_user_from_department_id',
+            'executor_subdepartment_id',
+            'executor_user_from_subdepartment_id',
             'creator_id',
             'start_date',
             'due_date',
@@ -91,12 +96,10 @@ class Task extends ActiveRecord
                 self::PRIORITY_CRITICAL,
             ]],
             [['progress'], 'integer', 'min' => 0, 'max' => 100],
-            // Убираем валидацию exist для MongoDB ObjectId, так как она может работать некорректно
-            // Вместо этого проверяем в контроллере
+            [['executor_user_from_department_id', 'executor_subdepartment_id', 'executor_user_from_subdepartment_id'], 'validateExecutor'],
             [['attachments'], 'safe'],
             [['start_date', 'due_date', 'created_at', 'updated_at'], 'safe'],
             [['project_id', 'creator_id'], 'safe'], // Помечаем как safe, так как устанавливаем в контроллере
-            [['executor_id'], 'safe'],
         ];
     }
 
@@ -112,7 +115,9 @@ class Task extends ActiveRecord
             'description' => 'Описание',
             'status' => 'Статус',
             'priority' => 'Приоритет',
-            'executor_id' => 'Исполнитель',
+            'executor_user_from_department_id' => 'Исполнитель (из подразделения)',
+            'executor_subdepartment_id' => 'Исполнитель (департамент)',
+            'executor_user_from_subdepartment_id' => 'Исполнитель (из департамента)',
             'creator_id' => 'Создатель',
             'start_date' => 'Дата начала',
             'due_date' => 'Срок выполнения',
@@ -121,6 +126,21 @@ class Task extends ActiveRecord
             'created_at' => 'Дата создания',
             'updated_at' => 'Дата обновления',
         ];
+    }
+
+    /**
+     * Валидация исполнителя: должен быть указан только один тип назначения
+     */
+    public function validateExecutor($attribute, $params)
+    {
+        $executorTypesCount = 0;
+        if ($this->executor_user_from_department_id) $executorTypesCount++;
+        if ($this->executor_subdepartment_id) $executorTypesCount++;
+        if ($this->executor_user_from_subdepartment_id) $executorTypesCount++;
+        
+        if ($executorTypesCount > 1) {
+            $this->addError('executor_user_from_department_id', 'Можно указать только один тип назначения исполнителя.');
+        }
     }
 
     /**
@@ -136,8 +156,14 @@ class Task extends ActiveRecord
             if (is_string($this->creator_id)) {
                 $this->creator_id = new \MongoDB\BSON\ObjectId($this->creator_id);
             }
-            if ($this->executor_id && is_string($this->executor_id)) {
-                $this->executor_id = new \MongoDB\BSON\ObjectId($this->executor_id);
+            if ($this->executor_user_from_department_id && is_string($this->executor_user_from_department_id)) {
+                $this->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($this->executor_user_from_department_id);
+            }
+            if ($this->executor_subdepartment_id && is_string($this->executor_subdepartment_id)) {
+                $this->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($this->executor_subdepartment_id);
+            }
+            if ($this->executor_user_from_subdepartment_id && is_string($this->executor_user_from_subdepartment_id)) {
+                $this->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($this->executor_user_from_subdepartment_id);
             }
             
             if ($insert) {
@@ -172,13 +198,117 @@ class Task extends ActiveRecord
     }
 
     /**
-     * Gets executor
+     * Gets executor user (if assigned directly from department)
      *
      * @return \yii\mongodb\ActiveQuery
      */
-    public function getExecutor()
+    public function getExecutorUserFromDepartment()
     {
-        return $this->hasOne(User::class, ['_id' => 'executor_id']);
+        return $this->hasOne(User::class, ['_id' => 'executor_user_from_department_id']);
+    }
+
+    /**
+     * Gets executor subdepartment (if assigned whole subdepartment)
+     *
+     * @return \yii\mongodb\ActiveQuery
+     */
+    public function getExecutorSubdepartment()
+    {
+        return $this->hasOne(Department::class, ['_id' => 'executor_subdepartment_id']);
+    }
+
+    /**
+     * Gets executor user from subdepartment (if assigned user from subdepartment)
+     *
+     * @return \yii\mongodb\ActiveQuery
+     */
+    public function getExecutorUserFromSubdepartment()
+    {
+        return $this->hasOne(User::class, ['_id' => 'executor_user_from_subdepartment_id']);
+    }
+
+    /**
+     * Gets all users that should see this task
+     *
+     * @return array массив User моделей
+     */
+    public function getAssignedUsers()
+    {
+        $users = [];
+        
+        // Если назначен пользователь из подразделения
+        if ($this->executor_user_from_department_id) {
+            $user = User::findOne(['_id' => $this->executor_user_from_department_id]);
+            if ($user) {
+                $users[] = $user;
+            }
+        }
+        
+        // Если назначен департамент
+        if ($this->executor_subdepartment_id) {
+            $subdepartment = Department::findOne(['_id' => $this->executor_subdepartment_id]);
+            if ($subdepartment) {
+                $subdepartmentUsers = User::find()
+                    ->where(['subdepartment_id' => $this->executor_subdepartment_id])
+                    ->all();
+                $users = array_merge($users, $subdepartmentUsers);
+            }
+        }
+        
+        // Если назначен пользователь из департамента
+        if ($this->executor_user_from_subdepartment_id) {
+            $user = User::findOne(['_id' => $this->executor_user_from_subdepartment_id]);
+            if ($user) {
+                $users[] = $user;
+            }
+        }
+        
+        return array_unique($users, SORT_REGULAR);
+    }
+
+    /**
+     * Checks if user is assigned to this task
+     *
+     * @param User $user
+     * @return bool
+     */
+    public function isAssignedToUser($user)
+    {
+        $assignedUsers = $this->getAssignedUsers();
+        foreach ($assignedUsers as $assignedUser) {
+            if ((string)$assignedUser->_id === (string)$user->_id) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Gets executor display name (department name if whole department assigned, or user names)
+     *
+     * @return string
+     */
+    public function getExecutorDisplayName()
+    {
+        // Если назначен весь департамент, показываем название департамента
+        if ($this->executor_subdepartment_id) {
+            $subdepartment = Department::findOne(['_id' => $this->executor_subdepartment_id]);
+            if ($subdepartment) {
+                return $subdepartment->name;
+            }
+        }
+        
+        // Иначе показываем имена пользователей
+        $assignedUsers = $this->getAssignedUsers();
+        if (!empty($assignedUsers)) {
+            $names = [];
+            foreach ($assignedUsers as $user) {
+                $names[] = $user->fio;
+            }
+            return implode(', ', $names);
+        }
+        
+        return 'Не назначен';
     }
 
     /**

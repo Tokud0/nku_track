@@ -18,8 +18,7 @@ use app\models\Task;
  * @property \MongoDB\BSON\UTCDateTime $end_date
  * @property string $status draft / active / review / finished / frozen
  * @property \MongoDB\BSON\ObjectId $manager_id
- * @property array $executors массив ObjectId исполнителей
- * @property \MongoDB\BSON\ObjectId|null $department_id ссылка на подразделение
+ * @property \MongoDB\BSON\ObjectId $department_id ссылка на подразделение
  * @property int $progress процент выполнения (0-100)
  * @property \MongoDB\BSON\UTCDateTime|null $last_report_date
  * @property \MongoDB\BSON\UTCDateTime|null $next_report_deadline
@@ -56,7 +55,6 @@ class Project extends ActiveRecord
             'end_date',
             'status',
             'manager_id',
-            'executors',
             'department_id',
             'progress',
             'last_report_date',
@@ -78,9 +76,9 @@ class Project extends ActiveRecord
     public function rules()
     {
         return [
-            [['title', 'manager_id', 'status'], 'required'],
+            [['title', 'manager_id', 'status', 'department_id'], 'required'],
             [['title', 'description', 'goals', 'status'], 'string'],
-            [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
+            [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id'],
             [['status'], 'in', 'range' => [
                 self::STATUS_DRAFT,
                 self::STATUS_ACTIVE,
@@ -90,7 +88,6 @@ class Project extends ActiveRecord
             ]],
             [['progress'], 'integer', 'min' => 0, 'max' => 100],
             [['manager_id'], 'exist', 'targetClass' => User::class, 'targetAttribute' => '_id'],
-            [['executors'], 'each', 'rule' => ['exist', 'targetClass' => User::class, 'targetAttribute' => '_id']],
             [['start_date', 'end_date', 'last_report_date', 'next_report_deadline', 'created_at', 'updated_at', 'start_date_str', 'end_date_str'], 'safe'],
         ];
     }
@@ -109,7 +106,6 @@ class Project extends ActiveRecord
             'end_date' => 'Дата окончания',
             'status' => 'Статус',
             'manager_id' => 'Руководитель',
-            'executors' => 'Исполнители',
             'department_id' => 'Подразделение',
             'progress' => 'Прогресс (%)',
             'last_report_date' => 'Дата последнего отчёта',
@@ -172,15 +168,6 @@ class Project extends ActiveRecord
         return $this->hasOne(User::class, ['_id' => 'manager_id']);
     }
 
-    /**
-     * Gets executors of the project
-     *
-     * @return \yii\mongodb\ActiveQuery
-     */
-    public function getExecutors()
-    {
-        return User::find()->where(['_id' => ['$in' => $this->executors ?: []]]);
-    }
 
     /**
      * Gets project specification (1:1 relation)

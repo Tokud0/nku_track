@@ -32,32 +32,59 @@ $this->registerLinkTag(['rel' => 'icon', 'type' => 'image/x-icon', 'href' => Yii
 <header id="header">
     <?php
     NavBar::begin([
-        'brandLabel' => Yii::$app->name,
+        'brandLabel' => '<i class="fas fa-tasks"></i> ' . Yii::$app->name,
         'brandUrl' => Yii::$app->homeUrl,
-        'options' => ['class' => 'navbar-expand-md navbar-dark bg-dark fixed-top']
+        'brandOptions' => ['encode' => false],
+        'options' => ['class' => 'navbar-expand-md navbar-dark fixed-top', 'style' => 'background-color: #6B8E9F;']
     ]);
-    $menuItems = [
-        ['label' => 'Главная', 'url' => ['/site/index']],
-        ['label' => 'Проекты', 'url' => ['/project/index']],
-        ['label' => 'О нас', 'url' => ['/site/about']],
-        ['label' => 'Контакты', 'url' => ['/site/contact']],
-    ];
+    $menuItems = [];
     
-    if (!Yii::$app->user->isGuest && (Yii::$app->user->identity->role === \app\models\User::ROLE_ADMIN || Yii::$app->user->identity->role === \app\models\User::ROLE_RECTOR)) {
-        $menuItems[] = ['label' => 'Админка', 'url' => ['/admin']];
+    if (!Yii::$app->user->isGuest) {
+        $user = Yii::$app->user->identity;
+        $menuItems[] = ['label' => '<i class="fas fa-home"></i> Главная', 'url' => ['/site/index'], 'encode' => false];
+        $menuItems[] = ['label' => '<i class="fas fa-project-diagram"></i> Проекты', 'url' => ['/project/index'], 'encode' => false];
+        
+        // Админка доступна только админу
+        if ($user->role === \app\models\User::ROLE_ADMIN) {
+            $menuItems[] = ['label' => '<i class="fas fa-cog"></i> Админка', 'url' => ['/admin'], 'encode' => false];
+        }
+    } else {
+        $menuItems[] = ['label' => 'Главная', 'url' => ['/site/index']];
+        $menuItems[] = ['label' => 'О нас', 'url' => ['/site/about']];
+        $menuItems[] = ['label' => 'Контакты', 'url' => ['/site/contact']];
     }
     
     if (Yii::$app->user->isGuest) {
         $menuItems[] = ['label' => 'Вход', 'url' => ['/site/login']];
         $menuItems[] = ['label' => 'Регистрация', 'url' => ['/site/signup']];
     } else {
-        $menuItems[] = '<li class="nav-item">'
-            . Html::beginForm(['/site/logout'], 'post')
+        $user = Yii::$app->user->identity;
+        $menuItems[] = '<li class="nav-item dropdown">'
+            . Html::a(
+                '<i class="fas fa-user"></i> ' . Html::encode($user->fio) . ' <i class="fas fa-caret-down"></i>',
+                '#',
+                [
+                    'class' => 'nav-link dropdown-toggle',
+                    'data-bs-toggle' => 'dropdown',
+                    'role' => 'button',
+                    'aria-haspopup' => 'true',
+                    'aria-expanded' => 'false',
+                    'encode' => false
+                ]
+            )
+            . '<div class="dropdown-menu dropdown-menu-end">'
+            . Html::a('<i class="fas fa-user-circle"></i> Профиль', ['/admin/user/view', 'id' => (string)$user->_id], [
+                'class' => 'dropdown-item',
+                'encode' => false
+            ])
+            . '<div class="dropdown-divider"></div>'
+            . Html::beginForm(['/site/logout'], 'post', ['class' => 'd-inline'])
             . Html::submitButton(
-                'Выход (' . Html::encode(Yii::$app->user->identity->fio) . ')',
-                ['class' => 'nav-link btn btn-link logout']
+                '<i class="fas fa-sign-out-alt"></i> Выход',
+                ['class' => 'dropdown-item btn btn-link p-0 text-start w-100', 'style' => 'border: none; background: none;']
             )
             . Html::endForm()
+            . '</div>'
             . '</li>';
     }
     
@@ -69,8 +96,8 @@ $this->registerLinkTag(['rel' => 'icon', 'type' => 'image/x-icon', 'href' => Yii
     ?>
 </header>
 
-<main id="main" class="flex-shrink-0" role="main">
-    <div class="container">
+<main id="main" class="flex-shrink-0" role="main" style="margin-top: 56px; padding-top: 20px;">
+    <div class="container-fluid">
         <?php if (!empty($this->params['breadcrumbs'])): ?>
             <?= Breadcrumbs::widget(['links' => $this->params['breadcrumbs']]) ?>
         <?php endif ?>
@@ -79,11 +106,15 @@ $this->registerLinkTag(['rel' => 'icon', 'type' => 'image/x-icon', 'href' => Yii
     </div>
 </main>
 
-<footer id="footer" class="mt-auto py-3 bg-light">
-    <div class="container">
+<footer id="footer" class="mt-auto py-3 bg-light border-top">
+    <div class="container-fluid">
         <div class="row text-muted">
-            <div class="col-md-6 text-center text-md-start">&copy; My Company <?= date('Y') ?></div>
-            <div class="col-md-6 text-center text-md-end"><?= Yii::powered() ?></div>
+            <div class="col-md-6 text-center text-md-start">
+                <small>&copy; <?= Yii::$app->name ?> <?= date('Y') ?></small>
+            </div>
+            <div class="col-md-6 text-center text-md-end">
+                <small><?= Yii::powered() ?></small>
+            </div>
         </div>
     </div>
 </footer>

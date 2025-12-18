@@ -25,8 +25,9 @@ use yii\widgets\ActiveForm;
     <?= $form->field($model, 'role')->dropDownList([
         '' => 'Все',
         \app\models\User::ROLE_ADMIN => 'Администратор',
-        \app\models\User::ROLE_RECTOR => 'Ректор',
-        \app\models\User::ROLE_MANAGER => 'Руководитель',
+        \app\models\User::ROLE_RECTOR => 'Руководитель',
+        \app\models\User::ROLE_TOP_MANAGER => 'Топ-менеджер',
+        \app\models\User::ROLE_MANAGER => 'Менеджер',
         \app\models\User::ROLE_EXECUTOR => 'Исполнитель',
     ]) ?>
 

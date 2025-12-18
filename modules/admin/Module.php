@@ -21,10 +21,9 @@ class Module extends \yii\base\Module
     {
         parent::init();
 
-        // Проверяем, что пользователь авторизован и является админом или ректором
+        // Проверяем, что пользователь авторизован и является админом
         if (Yii::$app->user->isGuest || 
-            (Yii::$app->user->identity->role !== \app\models\User::ROLE_ADMIN && 
-             Yii::$app->user->identity->role !== \app\models\User::ROLE_RECTOR)) {
+            Yii::$app->user->identity->role !== \app\models\User::ROLE_ADMIN) {
             Yii::$app->response->redirect(['/site/login'])->send();
             Yii::$app->end();
         }

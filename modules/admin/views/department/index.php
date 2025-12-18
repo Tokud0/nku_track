@@ -29,6 +29,7 @@ $this->params['breadcrumbs'][] = $this->title;
                     <tr>
                         <th>Название</th>
                         <th>Описание</th>
+                        <th>Департаментов</th>
                         <th>Количество пользователей</th>
                         <th>Действия</th>
                     </tr>
@@ -40,8 +41,33 @@ $this->params['breadcrumbs'][] = $this->title;
                             <td><?= Html::encode($department->description) ?></td>
                             <td>
                                 <?php
-                                $usersCount = \app\models\User::find()->where(['department_id' => $department->_id])->count();
-                                echo $usersCount;
+                                $subdepartmentsCount = \app\models\Department::find()->where(['parent_id' => $department->_id])->count();
+                                echo $subdepartmentsCount;
+                                ?>
+                            </td>
+                            <td>
+                                <?php
+                                // Пользователи напрямую в подразделении
+                                $directUsersCount = \app\models\User::find()
+                                    ->where(['department_id' => $department->_id])
+                                    ->andWhere(['subdepartment_id' => null])
+                                    ->count();
+                                // Пользователи в департаментах этого подразделения
+                                $subdepartments = \app\models\Department::find()
+                                    ->where(['parent_id' => $department->_id])
+                                    ->all();
+                                $subdepartmentIds = [];
+                                foreach ($subdepartments as $subdept) {
+                                    $subdepartmentIds[] = $subdept->_id;
+                                }
+                                $subdepartmentUsersCount = 0;
+                                if (!empty($subdepartmentIds)) {
+                                    $subdepartmentUsersCount = \app\models\User::find()
+                                        ->where(['subdepartment_id' => ['$in' => $subdepartmentIds]])
+                                        ->count();
+                                }
+                                $totalUsersCount = $directUsersCount + $subdepartmentUsersCount;
+                                echo $totalUsersCount;
                                 ?>
                             </td>
                             <td>

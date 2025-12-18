@@ -62,7 +62,97 @@ class SiteController extends Controller
      */
     public function actionIndex()
     {
-        return $this->render('index');
+        if (Yii::$app->user->isGuest) {
+            return $this->render('index');
+        }
+        
+        $user = Yii::$app->user->identity;
+        $data = [];
+        
+        // Статистика для всех ролей
+        $data['user'] = $user;
+        
+        // Для всех авторизованных пользователей показываем проекты их подразделения
+        if ($user->department_id) {
+            $projectsQuery = \app\models\Project::find()
+                ->where(['department_id' => $user->department_id]);
+            
+            $data['totalProjects'] = $projectsQuery->count();
+            $data['activeProjects'] = \app\models\Project::find()
+                ->where(['department_id' => $user->department_id, 'status' => \app\models\Project::STATUS_ACTIVE])
+                ->count();
+            
+            // Получаем ID проектов подразделения
+            $projectIds = \app\models\Project::find()
+                ->select(['_id'])
+                ->where(['department_id' => $user->department_id])
+                ->column();
+            
+            // Конвертируем в ObjectId если нужно
+            $projectIdsObj = [];
+            foreach ($projectIds as $id) {
+                if (is_string($id)) {
+                    try {
+                        $projectIdsObj[] = new \MongoDB\BSON\ObjectId($id);
+                    } catch (\Exception $e) {
+                        // Пропускаем невалидные ID
+                    }
+                } else {
+                    $projectIdsObj[] = $id;
+                }
+            }
+            
+            // Задачи пользователя
+            $allTasks = [];
+            if (!empty($projectIdsObj)) {
+                $allTasks = \app\models\Task::find()
+                    ->where(['project_id' => ['$in' => $projectIdsObj]])
+                    ->all();
+            }
+            
+            // Для исполнителя показываем только его задачи
+            if ($user->role === \app\models\User::ROLE_EXECUTOR) {
+                $userTasks = [];
+                foreach ($allTasks as $task) {
+                    if ($task->isAssignedToUser($user)) {
+                        $userTasks[] = $task;
+                    }
+                }
+                $data['totalTasks'] = count($userTasks);
+                // Сортируем по дате создания
+                usort($userTasks, function($a, $b) {
+                    $aTime = $a->created_at instanceof \MongoDB\BSON\UTCDateTime ? $a->created_at->toDateTime()->getTimestamp() : 0;
+                    $bTime = $b->created_at instanceof \MongoDB\BSON\UTCDateTime ? $b->created_at->toDateTime()->getTimestamp() : 0;
+                    return $bTime - $aTime;
+                });
+                $data['myTasks'] = array_slice($userTasks, 0, 5);
+            } else {
+                $data['totalTasks'] = count($allTasks);
+                // Сортируем по дате создания
+                usort($allTasks, function($a, $b) {
+                    $aTime = $a->created_at instanceof \MongoDB\BSON\UTCDateTime ? $a->created_at->toDateTime()->getTimestamp() : 0;
+                    $bTime = $b->created_at instanceof \MongoDB\BSON\UTCDateTime ? $b->created_at->toDateTime()->getTimestamp() : 0;
+                    return $bTime - $aTime;
+                });
+                $data['recentTasks'] = array_slice($allTasks, 0, 5);
+            }
+            
+            // Последние проекты
+            $data['recentProjects'] = \app\models\Project::find()
+                ->where(['department_id' => $user->department_id])
+                ->orderBy(['created_at' => SORT_DESC])
+                ->limit(5)
+                ->all();
+        } else {
+            $data['totalProjects'] = 0;
+            $data['activeProjects'] = 0;
+            $data['totalTasks'] = 0;
+            $data['recentProjects'] = [];
+            $data['recentTasks'] = [];
+            $data['myTasks'] = [];
+        }
+        
+        return $this->render('index', $data);
     }
 
     /**

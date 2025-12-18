@@ -56,18 +56,19 @@ class TaskController extends Controller
 
         $user = Yii::$app->user->identity;
         
-        // Только руководитель проекта, админ или ректор могут создавать задачи
-        if ($user->role !== User::ROLE_MANAGER && 
-            $user->role !== User::ROLE_ADMIN && 
-            $user->role !== User::ROLE_RECTOR) {
-            Yii::$app->session->setFlash('error', 'Только руководитель может создавать задачи.');
+        // Менеджер, топ-менеджер, ректор и админ могут создавать задачи
+        if (!in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN])) {
+            Yii::$app->session->setFlash('error', 'У вас нет прав для создания задач.');
             return $this->redirect(['project/view', 'id' => $project_id]);
         }
         
-        // Если менеджер, проверяем что это его проект
-        if ($user->role === User::ROLE_MANAGER && (string)$project->manager_id !== (string)$user->_id) {
-            Yii::$app->session->setFlash('error', 'Вы не можете создавать задачи для этого проекта.');
-            return $this->redirect(['project/view', 'id' => $project_id]);
+        // Проверяем доступ к проекту (по подразделению)
+        if ($user->role !== User::ROLE_ADMIN) {
+            if (!$project->department_id || !$user->department_id || 
+                (string)$project->department_id !== (string)$user->department_id) {
+                Yii::$app->session->setFlash('error', 'Вы не можете создавать задачи для проектов других подразделений.');
+                return $this->redirect(['project/view', 'id' => $project_id]);
+            }
         }
 
         $model = new Task();
@@ -98,11 +99,23 @@ class TaskController extends Controller
             } else {
                 $model->due_date = null;
             }
-            // Конвертируем executor_id в ObjectId если это строка
-            if (!empty($_POST['Task']['executor_id'])) {
-                $model->executor_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_id']);
+            // Конвертируем исполнителей в ObjectId
+            if (!empty($_POST['Task']['executor_user_from_department_id'])) {
+                $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
+                $model->executor_subdepartment_id = null;
+                $model->executor_user_from_subdepartment_id = null;
+            } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
+                $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
+                $model->executor_user_from_department_id = null;
+                $model->executor_user_from_subdepartment_id = null;
+            } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
+                $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
+                $model->executor_user_from_department_id = null;
+                $model->executor_subdepartment_id = null;
             } else {
-                $model->executor_id = null;
+                $model->executor_user_from_department_id = null;
+                $model->executor_subdepartment_id = null;
+                $model->executor_user_from_subdepartment_id = null;
             }
             
             // Валидируем модель
@@ -124,21 +137,9 @@ class TaskController extends Controller
             }
         }
 
-        // Получаем исполнителей проекта
-        $executors = [];
-        if ($project->executors) {
-            foreach ($project->executors as $executorId) {
-                $executor = User::findOne(['_id' => $executorId]);
-                if ($executor) {
-                    $executors[] = $executor;
-                }
-            }
-        }
-
         return $this->render('create', [
             'model' => $model,
             'project' => $project,
-            'executors' => $executors,
         ]);
     }
 
@@ -169,22 +170,41 @@ class TaskController extends Controller
             } else {
                 $model->due_date = null;
             }
-            // Конвертируем executor_id в ObjectId если это строка
-            if (!empty($_POST['Task']['executor_id'])) {
-                $model->executor_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_id']);
+            // Конвертируем исполнителей в ObjectId
+            if (!empty($_POST['Task']['executor_user_from_department_id'])) {
+                $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
+                $model->executor_subdepartment_id = null;
+                $model->executor_user_from_subdepartment_id = null;
+            } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
+                $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
+                $model->executor_user_from_department_id = null;
+                $model->executor_user_from_subdepartment_id = null;
+            } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
+                $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
+                $model->executor_user_from_department_id = null;
+                $model->executor_subdepartment_id = null;
             } else {
-                $model->executor_id = null;
+                $model->executor_user_from_department_id = null;
+                $model->executor_subdepartment_id = null;
+                $model->executor_user_from_subdepartment_id = null;
             }
             
-            // Исполнитель может редактировать только определенные поля
-            if ($user->role === User::ROLE_EXECUTOR && (string)$model->executor_id === (string)$user->_id) {
-                // Исполнитель может менять только статус, прогресс и описание
+            // Исполнитель может редактировать только определенные поля (статус, прогресс, описание)
+            if ($user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user)) {
                 $oldModel = Task::findOne(['_id' => $model->_id]);
                 $model->title = $oldModel->title;
                 $model->priority = $oldModel->priority;
-                $model->executor_id = $oldModel->executor_id;
+                $model->executor_user_from_department_id = $oldModel->executor_user_from_department_id;
+                $model->executor_subdepartment_id = $oldModel->executor_subdepartment_id;
+                $model->executor_user_from_subdepartment_id = $oldModel->executor_user_from_subdepartment_id;
                 $model->creator_id = $oldModel->creator_id;
                 $model->project_id = $oldModel->project_id;
+            }
+            
+            // Менеджер может редактировать задачи, но не может менять назначение (только при создании)
+            if ($user->role === User::ROLE_MANAGER && !$model->isNewRecord) {
+                // Менеджер может редактировать все поля, включая назначение исполнителя
+                // (ничего не ограничиваем здесь, так как менеджер имеет полный доступ к редактированию)
             }
             
             if ($model->save()) {
@@ -193,22 +213,9 @@ class TaskController extends Controller
             }
         }
 
-        // Получаем исполнителей проекта
-        $project = $model->project;
-        $executors = [];
-        if ($project && $project->executors) {
-            foreach ($project->executors as $executorId) {
-                $executor = User::findOne(['_id' => $executorId]);
-                if ($executor) {
-                    $executors[] = $executor;
-                }
-            }
-        }
-
         return $this->render('update', [
             'model' => $model,
-            'project' => $project,
-            'executors' => $executors,
+            'project' => $model->project,
         ]);
     }
 
@@ -224,18 +231,19 @@ class TaskController extends Controller
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
         
-        // Только руководитель проекта, админ или ректор могут удалять задачи
-        if ($user->role !== User::ROLE_MANAGER && 
-            $user->role !== User::ROLE_ADMIN && 
-            $user->role !== User::ROLE_RECTOR) {
+        // Ректор, топ-менеджер, менеджер и админ могут удалять задачи
+        if (!in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER, User::ROLE_ADMIN])) {
             Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи.');
             return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
         }
         
-        // Если менеджер, проверяем что это его проект
-        if ($user->role === User::ROLE_MANAGER && (string)$model->project->manager_id !== (string)$user->_id) {
-            Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи этого проекта.');
-            return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
+        // Проверяем доступ к проекту (по подразделению)
+        if ($user->role !== User::ROLE_ADMIN) {
+            if (!$model->project->department_id || !$user->department_id || 
+                (string)$model->project->department_id !== (string)$user->department_id) {
+                Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи проектов других подразделений.');
+                return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
+            }
         }
         
         $projectId = (string)$model->project_id;
@@ -279,15 +287,16 @@ class TaskController extends Controller
         
         // Исполнитель может менять статус только своих задач
         if ($user->role === User::ROLE_EXECUTOR) {
-            if (!$model->executor_id || (string)$model->executor_id !== (string)$user->_id) {
+            if (!$model->isAssignedToUser($user)) {
                 return ['success' => false, 'message' => 'Вы можете менять статус только своих задач.'];
             }
         }
         
-        // Руководитель может отправить на доработку (из review в todo или in_progress)
-        if ($user->role === User::ROLE_MANAGER && $model->status === Task::STATUS_REVIEW) {
+        // Ректор, топ-менеджер и менеджер могут отправить на доработку (из review в todo или in_progress)
+        if (in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) && 
+            $model->status === Task::STATUS_REVIEW) {
             if ($status !== Task::STATUS_TODO && $status !== Task::STATUS_IN_PROGRESS) {
-                return ['success' => false, 'message' => 'Руководитель может отправить задачу на доработку (todo или in_progress).'];
+                return ['success' => false, 'message' => 'Вы можете отправить задачу на доработку (todo или in_progress).'];
             }
         }
         
@@ -352,22 +361,20 @@ class TaskController extends Controller
      */
     protected function checkAccess($model, $user)
     {
-        // Админ и ректор имеют полный доступ
-        if ($user->role === User::ROLE_ADMIN || $user->role === User::ROLE_RECTOR) {
+        // Админ имеет полный доступ
+        if ($user->role === User::ROLE_ADMIN) {
             return;
         }
         
-        // Руководитель проекта может редактировать задачи своего проекта
-        if ($user->role === User::ROLE_MANAGER && 
-            $model->project && 
-            (string)$model->project->manager_id === (string)$user->_id) {
+        // Ректор, топ-менеджер и менеджер могут редактировать задачи проектов своего подразделения
+        if (in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) && 
+            $model->project && $model->project->department_id && $user->department_id &&
+            (string)$model->project->department_id === (string)$user->department_id) {
             return;
         }
         
-        // Исполнитель может редактировать только свои задачи
-        if ($user->role === User::ROLE_EXECUTOR && 
-            $model->executor_id && 
-            (string)$model->executor_id === (string)$user->_id) {
+        // Исполнитель может редактировать только свои задачи (статус, прогресс, описание)
+        if ($user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user)) {
             return;
         }
         
@@ -379,19 +386,20 @@ class TaskController extends Controller
      */
     protected function checkViewAccess($model, $user)
     {
-        // Админ, ректор и руководитель проекта имеют доступ
-        if ($user->role === User::ROLE_ADMIN || 
-            $user->role === User::ROLE_RECTOR ||
-            ($user->role === User::ROLE_MANAGER && 
-             $model->project && 
-             (string)$model->project->manager_id === (string)$user->_id)) {
+        // Админ имеет полный доступ
+        if ($user->role === User::ROLE_ADMIN) {
+            return;
+        }
+        
+        // Ректор, топ-менеджер и менеджер имеют доступ к задачам проектов своего подразделения
+        if (in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) && 
+            $model->project && $model->project->department_id && $user->department_id &&
+            (string)$model->project->department_id === (string)$user->department_id) {
             return;
         }
         
         // Исполнитель имеет доступ только если он назначен на задачу
-        if ($user->role === User::ROLE_EXECUTOR && 
-            $model->executor_id && 
-            (string)$model->executor_id === (string)$user->_id) {
+        if ($user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user)) {
             return;
         }
         

@@ -34,7 +34,7 @@ class ProjectSearch extends Project
      *
      * @param array $params
      * @param \MongoDB\BSON\ObjectId|null $managerId Фильтр по менеджеру
-     * @param \MongoDB\BSON\ObjectId|null $executorId Фильтр по исполнителю
+     * @param \MongoDB\BSON\ObjectId|null $executorId Фильтр по исполнителю (не используется, оставлен для совместимости)
      * @param \MongoDB\BSON\ObjectId|null $departmentId Фильтр по подразделению
      *
      * @return ActiveDataProvider
@@ -46,11 +46,6 @@ class ProjectSearch extends Project
         // Фильтр по менеджеру
         if ($managerId) {
             $query->andWhere(['manager_id' => $managerId]);
-        }
-
-        // Фильтр по исполнителю
-        if ($executorId) {
-            $query->andWhere(['executors' => ['$in' => [$executorId]]]);
         }
         
         // Фильтр по подразделению

@@ -67,8 +67,7 @@ class ProjectController extends Controller
                 }
             }
         } elseif ($user->role === User::ROLE_EXECUTOR) {
-            // Исполнитель видит только проекты своего подразделения, где он назначен
-            $executorId = $user->_id;
+            // Исполнитель видит только проекты своего подразделения
             if ($user->department_id) {
                 $departmentId = $user->department_id;
             }
@@ -80,7 +79,7 @@ class ProjectController extends Controller
             $departmentId = Yii::$app->request->queryParams['ProjectSearch']['department_id'];
         }
         
-        $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $managerId, $executorId, $departmentId);
+        $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $managerId, null, $departmentId);
 
         return $this->render('index', [
             'searchModel' => $searchModel,
@@ -119,8 +118,8 @@ class ProjectController extends Controller
     {
         $user = Yii::$app->user->identity;
         
-        // Только менеджер или админ может создавать проект
-        if ($user->role !== User::ROLE_MANAGER && $user->role !== User::ROLE_ADMIN) {
+        // Ректор и админ могут создавать проект
+        if ($user->role !== User::ROLE_RECTOR && $user->role !== User::ROLE_ADMIN) {
             Yii::$app->session->setFlash('error', 'Только руководитель может создавать проекты.');
             return $this->redirect(['index']);
         }
@@ -128,7 +127,6 @@ class ProjectController extends Controller
         $model = new Project();
         $model->manager_id = $user->_id;
         $model->status = Project::STATUS_DRAFT;
-        $model->executors = [];
         $model->progress = 0;
 
         if ($model->load(Yii::$app->request->post())) {
@@ -140,15 +138,13 @@ class ProjectController extends Controller
                 $model->end_date = new \MongoDB\BSON\UTCDateTime(strtotime($_POST['Project']['end_date']) * 1000);
             }
             // Конвертируем department_id в ObjectId если это строка
-            // Только админ или ректор могут устанавливать подразделение
-            if (($user->role === User::ROLE_ADMIN || $user->role === User::ROLE_RECTOR) && !empty($_POST['Project']['department_id'])) {
+            if (!empty($_POST['Project']['department_id'])) {
                 $model->department_id = new \MongoDB\BSON\ObjectId($_POST['Project']['department_id']);
-            } elseif ($user->role === User::ROLE_MANAGER) {
-                // Менеджер не может изменять подразделение, оставляем текущее или null
-                if ($model->isNewRecord) {
-                    $model->department_id = null;
+            } elseif ($user->role === User::ROLE_RECTOR && $model->isNewRecord) {
+                // Для ректора при создании используем его подразделение
+                if ($user->department_id) {
+                    $model->department_id = $user->department_id;
                 }
-                // При редактировании оставляем существующее значение
             }
             
             if ($model->save()) {
@@ -174,9 +170,23 @@ class ProjectController extends Controller
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
         
-        // Только менеджер проекта или админ может редактировать
-        if (($user->role !== User::ROLE_MANAGER && $user->role !== User::ROLE_ADMIN) || 
-            ($user->role === User::ROLE_MANAGER && (string)$model->manager_id !== (string)$user->_id)) {
+        // Админ может редактировать все проекты
+        if ($user->role === User::ROLE_ADMIN) {
+            // Разрешаем редактирование
+        }
+        // Ректор может редактировать все проекты своего подразделения
+        elseif ($user->role === User::ROLE_RECTOR && 
+                $model->department_id && $user->department_id &&
+                (string)$model->department_id === (string)$user->department_id) {
+            // Разрешаем редактирование
+        }
+        // Топ-менеджер и менеджер могут редактировать проекты своего подразделения
+        elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) &&
+                $model->department_id && $user->department_id &&
+                (string)$model->department_id === (string)$user->department_id) {
+            // Разрешаем редактирование
+        }
+        else {
             Yii::$app->session->setFlash('error', 'Вы не можете редактировать этот проект.');
             return $this->redirect(['view', 'id' => $id]);
         }
@@ -190,16 +200,10 @@ class ProjectController extends Controller
                 $model->end_date = new \MongoDB\BSON\UTCDateTime(strtotime($_POST['Project']['end_date']) * 1000);
             }
             // Конвертируем department_id в ObjectId если это строка
-            // Только админ или ректор могут устанавливать подразделение
-            if (($user->role === User::ROLE_ADMIN || $user->role === User::ROLE_RECTOR) && !empty($_POST['Project']['department_id'])) {
+            if (!empty($_POST['Project']['department_id'])) {
                 $model->department_id = new \MongoDB\BSON\ObjectId($_POST['Project']['department_id']);
-            } elseif ($user->role === User::ROLE_MANAGER) {
-                // Менеджер не может изменять подразделение, оставляем текущее или null
-                if ($model->isNewRecord) {
-                    $model->department_id = null;
-                }
-                // При редактировании оставляем существующее значение
             }
+            // При редактировании менеджер не может менять подразделение - остается текущее
             
             if ($model->save()) {
                 Yii::$app->session->setFlash('success', 'Проект успешно обновлен.');
@@ -224,9 +228,18 @@ class ProjectController extends Controller
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
         
-        // Только менеджер проекта или админ может удалить
-        if (($user->role !== User::ROLE_MANAGER && $user->role !== User::ROLE_ADMIN) || 
-            ($user->role === User::ROLE_MANAGER && (string)$model->manager_id !== (string)$user->_id)) {
+        // Админ может удалять все проекты
+        // Ректор может удалять проекты своего подразделения
+        $canDelete = false;
+        if ($user->role === User::ROLE_ADMIN) {
+            $canDelete = true;
+        } elseif ($user->role === User::ROLE_RECTOR && 
+                  $model->department_id && $user->department_id &&
+                  (string)$model->department_id === (string)$user->department_id) {
+            $canDelete = true;
+        }
+        
+        if (!$canDelete) {
             Yii::$app->session->setFlash('error', 'Вы не можете удалить этот проект.');
             return $this->redirect(['view', 'id' => $id]);
         }
@@ -237,60 +250,6 @@ class ProjectController extends Controller
         return $this->redirect(['index']);
     }
 
-    /**
-     * Назначение исполнителей проекту
-     * @param string $id
-     * @return mixed
-     * @throws NotFoundHttpException if the model cannot be found
-     */
-    public function actionAssignExecutors($id)
-    {
-        $model = $this->findModel($id);
-        $user = Yii::$app->user->identity;
-        
-        // Только менеджер проекта или админ может назначать исполнителей
-        if (($user->role !== User::ROLE_MANAGER && $user->role !== User::ROLE_ADMIN) || 
-            ($user->role === User::ROLE_MANAGER && (string)$model->manager_id !== (string)$user->_id)) {
-            Yii::$app->session->setFlash('error', 'Вы не можете назначать исполнителей для этого проекта.');
-            return $this->redirect(['view', 'id' => $id]);
-        }
-        
-        // Получаем исполнителей только из подразделения проекта
-        $executorsQuery = User::find()->where(['role' => User::ROLE_EXECUTOR]);
-        
-        // Если у проекта есть подразделение, фильтруем по нему
-        if ($model->department_id) {
-            $executorsQuery->andWhere(['department_id' => $model->department_id]);
-        }
-        
-        $executors = $executorsQuery->all();
-        
-        if (Yii::$app->request->isPost) {
-            $selectedExecutors = Yii::$app->request->post('executors', []);
-            
-            // Конвертируем строки в ObjectId
-            $executorIds = [];
-            foreach ($selectedExecutors as $executorId) {
-                try {
-                    $executorIds[] = new \MongoDB\BSON\ObjectId($executorId);
-                } catch (\Exception $e) {
-                    // Пропускаем невалидные ID
-                }
-            }
-            
-            $model->executors = $executorIds;
-            
-            if ($model->save()) {
-                Yii::$app->session->setFlash('success', 'Исполнители успешно назначены.');
-                return $this->redirect(['view', 'id' => (string)$model->_id]);
-            }
-        }
-        
-        return $this->render('assign-executors', [
-            'model' => $model,
-            'executors' => $executors,
-        ]);
-    }
 
     /**
      * Displays kanban board for project tasks
@@ -336,23 +295,31 @@ class ProjectController extends Controller
     {
         $user = Yii::$app->user->identity;
         
-        // Админ, ректор и менеджер проекта имеют доступ
-        if ($user->role === User::ROLE_ADMIN || 
-            $user->role === User::ROLE_RECTOR || 
-            ($user->role === User::ROLE_MANAGER && (string)$model->manager_id === (string)$user->_id)) {
+        // Админ имеет полный доступ
+        if ($user->role === User::ROLE_ADMIN) {
             return;
         }
         
-        // Исполнитель имеет доступ только если он назначен на проект
-        if ($user->role === User::ROLE_EXECUTOR) {
-            $isExecutor = false;
-            foreach ($model->executors ?: [] as $executorId) {
-                if ((string)$executorId === (string)$user->_id) {
-                    $isExecutor = true;
-                    break;
-                }
+        // Ректор имеет доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_RECTOR) {
+            if ($model->department_id && $user->department_id && 
+                (string)$model->department_id === (string)$user->department_id) {
+                return;
             }
-            if ($isExecutor) {
+        }
+        
+        // Топ-менеджер и менеджер имеют доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_TOP_MANAGER || $user->role === User::ROLE_MANAGER) {
+            if ($model->department_id && $user->department_id && 
+                (string)$model->department_id === (string)$user->department_id) {
+                return;
+            }
+        }
+        
+        // Исполнитель имеет доступ только если он в подразделении проекта
+        if ($user->role === User::ROLE_EXECUTOR) {
+            if ($model->department_id && $user->department_id && 
+                (string)$model->department_id === (string)$user->department_id) {
                 return;
             }
         }

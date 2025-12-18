@@ -37,15 +37,17 @@ $this->params['breadcrumbs'][] = $this->title;
                 'value' => function($model) {
                     $roles = [
                         User::ROLE_ADMIN => 'Администратор',
-                        User::ROLE_RECTOR => 'Ректор',
-                        User::ROLE_MANAGER => 'Руководитель',
+                        User::ROLE_RECTOR => 'Руководитель',
+                        User::ROLE_TOP_MANAGER => 'Топ-менеджер',
+                        User::ROLE_MANAGER => 'Менеджер',
                         User::ROLE_EXECUTOR => 'Исполнитель',
                     ];
                     return $roles[$model->role] ?? $model->role;
                 },
                 'filter' => [
                     User::ROLE_ADMIN => 'Администратор',
-                    User::ROLE_RECTOR => 'Ректор',
+                    User::ROLE_RECTOR => 'Руководитель',
+                    User::ROLE_TOP_MANAGER => 'Топ-менеджер',
                     User::ROLE_MANAGER => 'Руководитель',
                     User::ROLE_EXECUTOR => 'Исполнитель',
                 ],

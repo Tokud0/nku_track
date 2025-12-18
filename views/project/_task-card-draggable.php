@@ -34,13 +34,13 @@ use app\models\User;
             <?php endif; ?>
             
             <div class="mb-2">
-                <?php if ($task->executor): ?>
-                    <small class="text-muted">
-                        <i class="fas fa-user"></i> <?= Html::encode($task->executor->fio) ?>
-                    </small>
-                <?php else: ?>
-                    <small class="text-muted">Не назначен</small>
-                <?php endif; ?>
+                <small class="text-muted">
+                    <?php if ($task->executor_subdepartment_id): ?>
+                        <i class="fas fa-users"></i> <?= Html::encode($task->getExecutorDisplayName()) ?>
+                    <?php else: ?>
+                        <i class="fas fa-user"></i> <?= Html::encode($task->getExecutorDisplayName()) ?>
+                    <?php endif; ?>
+                </small>
             </div>
             
             <?php if ($task->due_date instanceof \MongoDB\BSON\UTCDateTime): ?>
@@ -78,10 +78,12 @@ use app\models\User;
                 <small class="text-muted"><?= $task->progress ?>%</small>
                 <div class="btn-group btn-group-sm" role="group">
                     <?= Html::a('Просмотр', ['task/view', 'id' => (string)$task->_id], ['class' => 'btn btn-sm btn-info']) ?>
-                    <?php if (($user->role === User::ROLE_MANAGER && (string)$task->project->manager_id === (string)$user->_id) || 
-                              $user->role === User::ROLE_ADMIN): ?>
+                    <?php 
+                    // Менеджер, топ-менеджер, ректор и админ могут редактировать задачи
+                    $canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+                    if ($canEditTask): ?>
                         <?= Html::a('Редактировать', ['task/update', 'id' => (string)$task->_id], ['class' => 'btn btn-sm btn-secondary']) ?>
-                    <?php elseif ($user->role === User::ROLE_EXECUTOR && $task->executor_id && (string)$task->executor_id === (string)$user->_id): ?>
+                    <?php elseif ($user->role === User::ROLE_EXECUTOR && $task->isAssignedToUser($user)): ?>
                         <?= Html::a('Редактировать', ['task/update', 'id' => (string)$task->_id], ['class' => 'btn btn-sm btn-secondary']) ?>
                     <?php endif; ?>
                 </div>

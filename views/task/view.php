@@ -14,9 +14,7 @@ $this->params['breadcrumbs'][] = ['label' => $model->project->title, 'url' => ['
 $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
-$isExecutor = $user->role === User::ROLE_EXECUTOR && 
-              $model->executor_id && 
-              (string)$model->executor_id === (string)$user->_id;
+$isExecutor = $user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user);
 ?>
 <div class="task-view">
 
@@ -33,8 +31,10 @@ $isExecutor = $user->role === User::ROLE_EXECUTOR &&
     </div>
 
     <p>
-        <?php if (($user->role === User::ROLE_MANAGER && (string)$model->project->manager_id === (string)$user->_id) || 
-                  $user->role === User::ROLE_ADMIN): ?>
+        <?php 
+        // Менеджер, топ-менеджер, ректор и админ могут редактировать и удалять задачи
+        $canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+        if ($canEditTask): ?>
             <?= Html::a('Редактировать', ['update', 'id' => (string)$model->_id], ['class' => 'btn btn-primary']) ?>
             <?= Html::a('Удалить', ['delete', 'id' => (string)$model->_id], [
                 'class' => 'btn btn-danger',
@@ -63,8 +63,11 @@ $isExecutor = $user->role === User::ROLE_EXECUTOR &&
                 'format' => 'raw',
             ],
             [
-                'attribute' => 'executor_id',
-                'value' => $model->executor ? $model->executor->fio : 'Не назначен',
+                'label' => 'Исполнитель',
+                'format' => 'raw',
+                'value' => function($model) {
+                    return Html::encode($model->getExecutorDisplayName());
+                },
             ],
             [
                 'attribute' => 'creator_id',

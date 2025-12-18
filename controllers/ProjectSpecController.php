@@ -87,11 +87,21 @@ class ProjectSpecController extends Controller
         
         $user = Yii::$app->user->identity;
         
-        // Только менеджер проекта или админ может создавать ТЗ
-        if (($user->role !== User::ROLE_MANAGER && $user->role !== User::ROLE_ADMIN) || 
-            ($user->role === User::ROLE_MANAGER && (string)$project->manager_id !== (string)$user->_id)) {
+        // Админ, ректор (создатель проекта) и топ-менеджер могут создавать ТЗ
+        if ($user->role !== User::ROLE_ADMIN && 
+            $user->role !== User::ROLE_TOP_MANAGER &&
+            ($user->role !== User::ROLE_RECTOR || (string)$project->manager_id !== (string)$user->_id)) {
             Yii::$app->session->setFlash('error', 'Вы не можете создавать ТЗ для этого проекта.');
             return $this->redirect(['project/view', 'id' => (string)$projectIdObj]);
+        }
+        
+        // Топ-менеджер имеет доступ только к проектам своего подразделения
+        if ($user->role === User::ROLE_TOP_MANAGER) {
+            if (!$project->department_id || !$user->department_id || 
+                (string)$project->department_id !== (string)$user->department_id) {
+                Yii::$app->session->setFlash('error', 'Вы не можете создавать ТЗ для проектов других подразделений.');
+                return $this->redirect(['project/view', 'id' => (string)$projectIdObj]);
+            }
         }
         
         // Проверяем, не существует ли уже ТЗ
@@ -182,11 +192,21 @@ class ProjectSpecController extends Controller
             return $this->redirect(['project/view', 'id' => $project_id]);
         }
         
-        // Только менеджер проекта или админ может редактировать ТЗ
-        if (($user->role !== User::ROLE_MANAGER && $user->role !== User::ROLE_ADMIN) || 
-            ($user->role === User::ROLE_MANAGER && (string)$project->manager_id !== (string)$user->_id)) {
+        // Админ, ректор (создатель проекта) и топ-менеджер могут редактировать ТЗ
+        if ($user->role !== User::ROLE_ADMIN && 
+            $user->role !== User::ROLE_TOP_MANAGER &&
+            ($user->role !== User::ROLE_RECTOR || (string)$project->manager_id !== (string)$user->_id)) {
             Yii::$app->session->setFlash('error', 'Вы не можете редактировать ТЗ для этого проекта.');
             return $this->redirect(['project/view', 'id' => $project_id]);
+        }
+        
+        // Топ-менеджер имеет доступ только к проектам своего подразделения
+        if ($user->role === User::ROLE_TOP_MANAGER) {
+            if (!$project->department_id || !$user->department_id || 
+                (string)$project->department_id !== (string)$user->department_id) {
+                Yii::$app->session->setFlash('error', 'Вы не можете редактировать ТЗ для проектов других подразделений.');
+                return $this->redirect(['project/view', 'id' => $project_id]);
+            }
         }
         
         $model = ProjectSpec::findOne(['project_id' => $project_id]);
@@ -290,23 +310,31 @@ class ProjectSpecController extends Controller
     {
         $user = Yii::$app->user->identity;
         
-        // Админ, ректор и менеджер проекта имеют доступ
-        if ($user->role === User::ROLE_ADMIN || 
-            $user->role === User::ROLE_RECTOR || 
-            ($user->role === User::ROLE_MANAGER && (string)$project->manager_id === (string)$user->_id)) {
+        // Админ имеет полный доступ
+        if ($user->role === User::ROLE_ADMIN) {
             return;
         }
         
-        // Исполнитель имеет доступ только если он назначен на проект
-        if ($user->role === User::ROLE_EXECUTOR) {
-            $isExecutor = false;
-            foreach ($project->executors ?: [] as $executorId) {
-                if ((string)$executorId === (string)$user->_id) {
-                    $isExecutor = true;
-                    break;
-                }
+        // Ректор имеет доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_RECTOR) {
+            if ($project->department_id && $user->department_id && 
+                (string)$project->department_id === (string)$user->department_id) {
+                return;
             }
-            if ($isExecutor) {
+        }
+        
+        // Топ-менеджер и менеджер имеют доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_TOP_MANAGER || $user->role === User::ROLE_MANAGER) {
+            if ($project->department_id && $user->department_id && 
+                (string)$project->department_id === (string)$user->department_id) {
+                return;
+            }
+        }
+        
+        // Исполнитель имеет доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_EXECUTOR) {
+            if ($project->department_id && $user->department_id && 
+                (string)$project->department_id === (string)$user->department_id) {
                 return;
             }
         }

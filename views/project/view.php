@@ -33,7 +33,24 @@ $user = Yii::$app->user->identity;
     </div>
 
     <div class="mb-3">
-        <?php if (($user->role === User::ROLE_MANAGER && (string)$model->manager_id === (string)$user->_id) || $user->role === User::ROLE_ADMIN): ?>
+        <?php 
+        // Админ может редактировать все проекты
+        // Ректор может редактировать все проекты своего подразделения
+        // Топ-менеджер и менеджер могут редактировать проекты своего подразделения
+        $canEditProject = false;
+        if ($user->role === User::ROLE_ADMIN) {
+            $canEditProject = true;
+        } elseif ($user->role === User::ROLE_RECTOR && 
+                  $model->department_id && $user->department_id &&
+                  (string)$model->department_id === (string)$user->department_id) {
+            $canEditProject = true;
+        } elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) &&
+                  $model->department_id && $user->department_id &&
+                  (string)$model->department_id === (string)$user->department_id) {
+            $canEditProject = true;
+        }
+        
+        if ($canEditProject): ?>
             <?= Html::a('Редактировать', ['update', 'id' => (string)$model->_id], ['class' => 'btn btn-primary']) ?>
             <?= Html::a('Удалить', ['delete', 'id' => (string)$model->_id], [
                 'class' => 'btn btn-danger',
@@ -42,7 +59,6 @@ $user = Yii::$app->user->identity;
                     'method' => 'post',
                 ],
             ]) ?>
-            <?= Html::a('Назначить исполнителей', ['assign-executors', 'id' => (string)$model->_id], ['class' => 'btn btn-success']) ?>
         <?php endif; ?>
         <?= Html::a('Назад к списку', ['index'], ['class' => 'btn btn-secondary']) ?>
     </div>
@@ -91,20 +107,6 @@ $user = Yii::$app->user->identity;
                             [
                                 'attribute' => 'manager_id',
                                 'value' => $model->manager ? $model->manager->fio : '-',
-                            ],
-                            [
-                                'attribute' => 'executors',
-                                'format' => 'raw',
-                                'value' => function($model) {
-                                    $executors = [];
-                                    foreach ($model->executors ?: [] as $executorId) {
-                                        $executor = User::findOne(['_id' => $executorId]);
-                                        if ($executor) {
-                                            $executors[] = Html::encode($executor->fio);
-                                        }
-                                    }
-                                    return !empty($executors) ? implode(', ', $executors) : '<span class="text-muted">Не назначены</span>';
-                                },
                             ],
                             [
                                 'attribute' => 'department_id',
@@ -163,7 +165,12 @@ $user = Yii::$app->user->identity;
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h4 class="mb-0">Техническое задание</h4>
-                    <?php if (($user->role === User::ROLE_MANAGER && (string)$model->manager_id === (string)$user->_id) || $user->role === User::ROLE_ADMIN): ?>
+                    <?php 
+                    // Топ-менеджер, ректор (создатель проекта) и админ могут работать с ТЗ
+                    $canWorkWithSpec = $user->role === User::ROLE_ADMIN || 
+                                      $user->role === User::ROLE_TOP_MANAGER ||
+                                      ($user->role === User::ROLE_RECTOR && (string)$model->manager_id === (string)$user->_id);
+                    if ($canWorkWithSpec): ?>
                         <?php if ($spec): ?>
                             <?php if ($model->status === Project::STATUS_DRAFT): ?>
                                 <?= Html::a('Редактировать ТЗ', ['project-spec/update', 'project_id' => (string)$model->_id], ['class' => 'btn btn-sm btn-primary']) ?>
@@ -281,9 +288,10 @@ $user = Yii::$app->user->identity;
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h4 class="mb-0">Задачи проекта</h4>
                     <div>
-                        <?php if (($user->role === User::ROLE_MANAGER && (string)$model->manager_id === (string)$user->_id) || 
-                                  $user->role === User::ROLE_ADMIN || 
-                                  $user->role === User::ROLE_RECTOR): ?>
+                        <?php 
+                        // Менеджер, топ-менеджер, ректор и админ могут создавать задачи
+                        $canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+                        if ($canCreateTask): ?>
                             <?= Html::a('Создать задачу', ['task/create', 'project_id' => (string)$model->_id], ['class' => 'btn btn-sm btn-success mr-2']) ?>
                         <?php endif; ?>
                         <?= Html::a('Канбан-доска', ['kanban', 'id' => (string)$model->_id], ['class' => 'btn btn-sm btn-primary']) ?>
