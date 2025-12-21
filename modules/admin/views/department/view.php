@@ -22,6 +22,7 @@ $this->params['breadcrumbs'][] = $this->title;
             <?= Html::a('Создать департамент', ['create-subdepartment', 'id' => (string)$model->_id], ['class' => 'btn btn-info']) ?>
         <?php endif; ?>
         <?= Html::a('Управление пользователями', ['manage-users', 'id' => (string)$model->_id], ['class' => 'btn btn-success']) ?>
+        <?= Html::a('Дорожная карта', ['/admin/roadmap/view', 'id' => (string)$model->_id], ['class' => 'btn btn-warning']) ?>
         <?= Html::a('Удалить', ['delete', 'id' => (string)$model->_id], [
             'class' => 'btn btn-danger',
             'data' => [

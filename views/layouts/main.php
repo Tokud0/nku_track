@@ -44,6 +44,11 @@ $this->registerLinkTag(['rel' => 'icon', 'type' => 'image/x-icon', 'href' => Yii
         $menuItems[] = ['label' => '<i class="fas fa-home"></i> Главная', 'url' => ['/site/index'], 'encode' => false];
         $menuItems[] = ['label' => '<i class="fas fa-project-diagram"></i> Проекты', 'url' => ['/project/index'], 'encode' => false];
         
+        // Дорожная карта доступна руководителю и топ-менеджеру
+        if (in_array($user->role, [\app\models\User::ROLE_RECTOR, \app\models\User::ROLE_TOP_MANAGER])) {
+            $menuItems[] = ['label' => '<i class="fas fa-road"></i> Дорожная карта', 'url' => ['/roadmap/index'], 'encode' => false];
+        }
+        
         // Админка доступна только админу
         if ($user->role === \app\models\User::ROLE_ADMIN) {
             $menuItems[] = ['label' => '<i class="fas fa-cog"></i> Админка', 'url' => ['/admin'], 'encode' => false];

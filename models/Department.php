@@ -185,5 +185,15 @@ class Department extends ActiveRecord
     {
         return $this->parent_id !== null;
     }
+
+    /**
+     * Gets roadmap for this department
+     *
+     * @return \yii\mongodb\ActiveQuery
+     */
+    public function getRoadmap()
+    {
+        return $this->hasOne(Roadmap::class, ['department_id' => '_id']);
+    }
 }
 

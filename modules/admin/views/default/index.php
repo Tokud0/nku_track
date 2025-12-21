@@ -84,6 +84,18 @@ $this->params['breadcrumbs'][] = $this->title;
                     </div>
                 </div>
                 
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="glyphicon glyphicon-road"></i> Дорожные карты подразделений
+                            </h5>
+                            <p class="card-text">Управление дорожными картами и этапами развития подразделений.</p>
+                            <?= Html::a('Перейти к управлению', ['roadmap/index'], ['class' => 'btn btn-primary']) ?>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Здесь можно добавить другие действия в будущем -->
                 <!--
                 <div class="col-md-4 mb-3">

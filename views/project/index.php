@@ -165,18 +165,30 @@ $statusLabels = [
                             <div class="btn-group w-100" role="group">
                                 <?= Html::a('Просмотр', ['view', 'id' => (string)$project->_id], ['class' => 'btn btn-sm btn-info']) ?>
                                 <?php 
+                                // Определяем, может ли пользователь редактировать проект
+                                // Исполнитель НЕ может редактировать проекты
                                 $canEditProjectInList = false;
+                                
+                                // Админ может редактировать все проекты
                                 if ($user->role === User::ROLE_ADMIN) {
                                     $canEditProjectInList = true;
-                                } elseif ($user->role === User::ROLE_RECTOR && 
-                                          $project->department_id && $user->department_id &&
-                                          (string)$project->department_id === (string)$user->department_id) {
-                                    $canEditProjectInList = true;
-                                } elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) &&
-                                          $project->department_id && $user->department_id &&
-                                          (string)$project->department_id === (string)$user->department_id) {
-                                    $canEditProjectInList = true;
                                 }
+                                // Ректор может редактировать проекты своего подразделения
+                                elseif ($user->role === User::ROLE_RECTOR) {
+                                    if ($project->department_id && $user->department_id &&
+                                        (string)$project->department_id === (string)$user->department_id) {
+                                        $canEditProjectInList = true;
+                                    }
+                                }
+                                // Топ-менеджер и менеджер могут редактировать проекты своего подразделения
+                                elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER])) {
+                                    if ($project->department_id && $user->department_id &&
+                                        (string)$project->department_id === (string)$user->department_id) {
+                                        $canEditProjectInList = true;
+                                    }
+                                }
+                                // Исполнитель и все остальные НЕ могут редактировать
+                                
                                 if ($canEditProjectInList): ?>
                                     <?= Html::a('Редактировать', ['update', 'id' => (string)$project->_id], ['class' => 'btn btn-sm btn-primary']) ?>
                                 <?php endif; ?>

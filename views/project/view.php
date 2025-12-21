@@ -34,21 +34,29 @@ $user = Yii::$app->user->identity;
 
     <div class="mb-3">
         <?php 
-        // Админ может редактировать все проекты
-        // Ректор может редактировать все проекты своего подразделения
-        // Топ-менеджер и менеджер могут редактировать проекты своего подразделения
+        // Определяем, может ли пользователь редактировать проект
+        // Исполнитель НЕ может редактировать проекты
         $canEditProject = false;
+        
+        // Админ может редактировать все проекты
         if ($user->role === User::ROLE_ADMIN) {
             $canEditProject = true;
-        } elseif ($user->role === User::ROLE_RECTOR && 
-                  $model->department_id && $user->department_id &&
-                  (string)$model->department_id === (string)$user->department_id) {
-            $canEditProject = true;
-        } elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) &&
-                  $model->department_id && $user->department_id &&
-                  (string)$model->department_id === (string)$user->department_id) {
-            $canEditProject = true;
         }
+        // Ректор может редактировать проекты своего подразделения
+        elseif ($user->role === User::ROLE_RECTOR) {
+            if ($model->department_id && $user->department_id &&
+                (string)$model->department_id === (string)$user->department_id) {
+                $canEditProject = true;
+            }
+        }
+        // Топ-менеджер и менеджер могут редактировать проекты своего подразделения
+        elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER])) {
+            if ($model->department_id && $user->department_id &&
+                (string)$model->department_id === (string)$user->department_id) {
+                $canEditProject = true;
+            }
+        }
+        // Исполнитель и все остальные НЕ могут редактировать
         
         if ($canEditProject): ?>
             <?= Html::a('Редактировать', ['update', 'id' => (string)$model->_id], ['class' => 'btn btn-primary']) ?>
