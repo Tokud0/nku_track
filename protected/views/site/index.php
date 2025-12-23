@@ -346,3 +346,4 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
         </div>
     </div>
 </div>
+
