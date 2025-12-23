@@ -48,7 +48,7 @@ $this->params['breadcrumbs'][] = $this->title;
             Project::STATUS_FROZEN => 'Заморожен',
         ]) ?>
 
-        <?php if (Yii::$app->user->identity->role === \app\models\User::ROLE_ADMIN || Yii::$app->user->identity->role === \app\models\User::ROLE_RECTOR): ?>
+        <?php if (in_array(Yii::$app->user->identity->role, [\app\models\User::ROLE_ADMIN, \app\models\User::ROLE_HEAD])): ?>
             <?php
             $departments = \app\models\Department::find()->all();
             $departmentList = [];

@@ -17,21 +17,14 @@ $this->params['breadcrumbs'][] = 'Канбан-доска';
 $user = Yii::$app->user->identity;
 $tasksQuery = Task::find()->where(['project_id' => $model->_id]);
 
-// Фильтруем задачи по видимости для исполнителя
-if ($user->role === User::ROLE_EXECUTOR) {
-    $allTasks = Task::find()->where(['project_id' => $model->_id])->all();
-    $visibleTaskIds = [];
-    foreach ($allTasks as $task) {
-        if ($task->isAssignedToUser($user)) {
-            $visibleTaskIds[] = $task->_id;
-        }
-    }
-    if (!empty($visibleTaskIds)) {
-        $tasksQuery->andWhere(['_id' => ['$in' => $visibleTaskIds]]);
-    } else {
-        $tasksQuery->andWhere(['_id' => ['$in' => []]]); // Пустой результат
-    }
-}
+// Исключаем архивные задачи из канбан-доски
+$tasksQuery->andWhere(['$or' => [
+    ['is_archived' => false],
+    ['is_archived' => ['$exists' => false]], // Для старых задач, где поле еще не установлено
+]]);
+
+// Для исполнителя по умолчанию показываем все задачи проекта
+// Фильтрация "Мои задачи" будет работать на клиенте через JavaScript
 
 $tasks = $tasksQuery->all();
 $tasksByStatus = [
@@ -49,9 +42,9 @@ foreach ($tasks as $task) {
 }
 
 // Определяем права пользователя
-$canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+$canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
 $canDragTasks = true; // По умолчанию все могут перетаскивать
-$canEditTasks = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+$canEditTasks = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
 
 // UI-флаг режима ректора
 $RECTOR_TASKS_MODE = "readonly"; // "readonly" или "limited"
@@ -111,7 +104,8 @@ $statusColumns = [
 // Маппинг ролей для баннера прав
 $roleInfo = [
     User::ROLE_ADMIN => ['label' => 'Администратор', 'icon' => 'fa-shield-alt', 'desc' => 'Полный доступ ко всем задачам'],
-    User::ROLE_RECTOR => ['label' => 'Руководитель', 'icon' => 'fa-crown', 'desc' => $isRectorReadonly ? 'Только просмотр задач' : 'Управление задачами с ограничениями'],
+    User::ROLE_HEAD => ['label' => 'Руководитель', 'icon' => 'fa-crown', 'desc' => 'Управление проектами и задачами своего подразделения'],
+    User::ROLE_RECTOR => ['label' => 'Ректор', 'icon' => 'fa-eye', 'desc' => 'Только просмотр всех проектов и задач'],
     User::ROLE_TOP_MANAGER => ['label' => 'Топ-менеджер', 'icon' => 'fa-star', 'desc' => 'Создание и управление задачами'],
     User::ROLE_MANAGER => ['label' => 'Менеджер', 'icon' => 'fa-user-tie', 'desc' => 'Создание и управление задачами'],
     User::ROLE_EXECUTOR => ['label' => 'Исполнитель', 'icon' => 'fa-user', 'desc' => 'Работа со своими задачами'],
@@ -158,7 +152,15 @@ $currentRoleInfo = $roleInfo[$user->role] ?? ['label' => $user->role, 'icon' => 
                         </div>
                     </div>
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-items-center">
+                    <?php if ($user->role === User::ROLE_EXECUTOR): ?>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="filterMyTasks" style="cursor: pointer;">
+                            <label class="form-check-label" for="filterMyTasks" style="cursor: pointer; user-select: none;">
+                                <i class="fas fa-filter me-1"></i>Мои задачи
+                            </label>
+                        </div>
+                    <?php endif; ?>
                     <?php if ($canCreateTask): ?>
                         <span class="nku-badge nku-badge--success">
                             <i class="fas fa-plus me-1"></i>Создание задач
@@ -222,9 +224,17 @@ $currentRoleInfo = $roleInfo[$user->role] ?? ['label' => $user->role, 'icon' => 
                             <?php else: ?>
                                 <?php foreach ($tasksByStatus[$status] as $task): ?>
                                     <!-- Task Card -->
+                                    <?php 
+                                    // Определяем, назначена ли задача текущему пользователю (для фильтрации)
+                                    $isMyTask = false;
+                                    if ($user->role === User::ROLE_EXECUTOR) {
+                                        $isMyTask = $task->isAssignedToUser($user);
+                                    }
+                                    ?>
                                     <div class="nku-task-card <?= !$canDragTasks ? 'no-drag' : '' ?>" 
                                          data-task-id="<?= (string)$task->_id ?>" 
                                          data-priority="<?= $task->priority ?>"
+                                         data-is-my-task="<?= $isMyTask ? '1' : '0' ?>"
                                          <?= $canDragTasks ? 'draggable="true"' : '' ?>>
                                         
                                         <div class="nku-task-card__priority nku-task-card__priority--<?= $task->priority ?>"></div>
@@ -277,14 +287,25 @@ $currentRoleInfo = $roleInfo[$user->role] ?? ['label' => $user->role, 'icon' => 
                                             <?php endif; ?>
 
                                             <!-- Progress -->
-                                            <?php if ($task->progress > 0): ?>
+                                            <?php
+                                            $totalSubtasks = $task->getTotalSubtasksCount();
+                                            $hasProgress = $task->progress > 0 || $totalSubtasks > 0;
+                                            ?>
+                                            <?php if ($hasProgress): ?>
                                                 <div class="nku-progress nku-progress--sm mb-2">
                                                     <div class="nku-progress__bar nku-progress__bar--primary" 
                                                          style="width: <?= $task->progress ?>%">
                                                     </div>
                                                 </div>
                                                 <div class="text-end">
-                                                    <small class="text-muted"><?= $task->progress ?>%</small>
+                                                    <?php if ($totalSubtasks > 0): ?>
+                                                        <small class="text-muted">
+                                                            <strong><?= $task->getProgressFormat() ?></strong>
+                                                            <span class="ms-1">(<?= $task->progress ?>%)</span>
+                                                        </small>
+                                                    <?php else: ?>
+                                                        <small class="text-muted"><?= $task->progress ?>%</small>
+                                                    <?php endif; ?>
                                                 </div>
                                             <?php endif; ?>
 
@@ -547,32 +568,50 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Функция для обновления счетчиков
+    // Функция для обновления счетчиков (учитывает только видимые задачи)
     function updateCounters() {
         const statuses = ['<?= Task::STATUS_TODO ?>', '<?= Task::STATUS_IN_PROGRESS ?>', '<?= Task::STATUS_REVIEW ?>', '<?= Task::STATUS_DONE ?>', '<?= Task::STATUS_CANCELED ?>'];
         statuses.forEach(function(status) {
             const column = document.getElementById('column-' + status);
             if (!column) return;
             
-            const tasks = column.querySelectorAll('.nku-task-card');
-            const count = tasks.length;
+            // Считаем только видимые задачи (не скрытые через display: none)
+            const allTasks = column.querySelectorAll('.nku-task-card');
+            let visibleCount = 0;
+            let hasVisibleTasks = false;
+            
+            allTasks.forEach(function(task) {
+                const style = window.getComputedStyle(task);
+                if (style.display !== 'none') {
+                    visibleCount++;
+                    hasVisibleTasks = true;
+                }
+            });
+            
             const countElement = document.getElementById('count-' + status);
             if (countElement) {
-                countElement.textContent = count;
+                countElement.textContent = visibleCount;
             }
             
             // Показываем/скрываем empty state
             const emptyState = column.querySelector('.nku-kanban-empty');
-            if (count === 0 && !emptyState) {
-                const statusInfo = getStatusInfo(status);
-                column.innerHTML = `
-                    <div class="nku-kanban-empty">
+            if (visibleCount === 0) {
+                // Если нет видимых задач, показываем empty state
+                if (!emptyState) {
+                    const statusInfo = getStatusInfo(status);
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = 'nku-kanban-empty';
+                    emptyDiv.innerHTML = `
                         <i class="fas ${statusInfo.icon} nku-kanban-empty__icon"></i>
                         <div class="nku-kanban-empty__text">Нет задач</div>
-                    </div>
-                `;
-            } else if (count > 0 && emptyState) {
-                emptyState.remove();
+                    `;
+                    column.appendChild(emptyDiv);
+                }
+            } else {
+                // Если есть видимые задачи, удаляем empty state
+                if (emptyState) {
+                    emptyState.remove();
+                }
             }
         });
     }
@@ -646,5 +685,38 @@ document.addEventListener('DOMContentLoaded', function() {
     var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
+    
+    // Фильтрация задач для исполнителя
+    <?php if ($user->role === User::ROLE_EXECUTOR): ?>
+    const filterMyTasksCheckbox = document.getElementById('filterMyTasks');
+    if (filterMyTasksCheckbox) {
+        filterMyTasksCheckbox.addEventListener('change', function() {
+            const showOnlyMyTasks = this.checked;
+            const allTaskCards = document.querySelectorAll('.nku-task-card');
+            
+            allTaskCards.forEach(function(card) {
+                const isMyTask = card.getAttribute('data-is-my-task') === '1';
+                
+                if (showOnlyMyTasks) {
+                    // Показываем только мои задачи
+                    if (isMyTask) {
+                        card.style.display = '';
+                        card.style.visibility = 'visible';
+                    } else {
+                        card.style.display = 'none';
+                        card.style.visibility = 'hidden';
+                    }
+                } else {
+                    // Показываем все задачи
+                    card.style.display = '';
+                    card.style.visibility = 'visible';
+                }
+            });
+            
+            // Обновляем счетчики задач в колонках (учитывая только видимые)
+            updateCounters();
+        });
+    }
+    <?php endif; ?>
 });
 </script>

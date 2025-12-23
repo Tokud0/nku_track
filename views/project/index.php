@@ -28,7 +28,7 @@ $pagination = $dataProvider->getPagination();
             </h1>
             <p class="text-muted mb-0">Управление проектами организации</p>
         </div>
-        <?php if ($user->role === User::ROLE_RECTOR || $user->role === User::ROLE_ADMIN): ?>
+        <?php if (in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_ADMIN]) && $user->role !== User::ROLE_RECTOR): ?>
             <?= Html::a(
                 '<i class="fas fa-plus-circle me-2"></i>Создать проект', 
                 ['create'], 
@@ -36,6 +36,13 @@ $pagination = $dataProvider->getPagination();
             ) ?>
         <?php endif; ?>
     </div>
+
+    <?php if (!$user->department_id && $user->role !== User::ROLE_ADMIN && $user->role !== User::ROLE_RECTOR): ?>
+        <div class="alert alert-warning mb-4" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Внимание!</strong> Вы не прикреплены ни к одному подразделению. Обратитесь к администратору для прикрепления к подразделению.
+        </div>
+    <?php endif; ?>
 
     <!-- Filter Bar -->
     <div class="nku-card mb-4">
@@ -121,7 +128,7 @@ $pagination = $dataProvider->getPagination();
             <div class="nku-empty__description">
                 Попробуйте изменить параметры фильтрации или создайте новый проект
             </div>
-            <?php if ($user->role === User::ROLE_RECTOR || $user->role === User::ROLE_ADMIN): ?>
+            <?php if (in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_ADMIN]) && $user->role !== User::ROLE_RECTOR): ?>
                 <div class="nku-empty__action">
                     <?= Html::a(
                         '<i class="fas fa-plus-circle me-2"></i>Создать проект',
@@ -163,6 +170,8 @@ $pagination = $dataProvider->getPagination();
                             <?php endif; ?>
                             
                             <!-- Прогресс -->
+                            <!-- Временно скрыто по запросу пользователя -->
+                            <?php if (false): ?>
                             <div class="mb-3">
                                 <div class="d-flex justify-content-between mb-1">
                                     <small class="text-muted fw-semibold">Прогресс</small>
@@ -176,6 +185,7 @@ $pagination = $dataProvider->getPagination();
                                     </div>
                                 </div>
                             </div>
+                            <?php endif; ?>
                             
                             <!-- Информация о проекте -->
                             <div class="project-meta">
@@ -232,19 +242,25 @@ $pagination = $dataProvider->getPagination();
                                 <?php 
                                 // Проверка прав на редактирование
                                 $canEdit = false;
-                                if ($user->role === User::ROLE_ADMIN) {
+                                // Ректор может только просматривать, не может редактировать
+                                if ($user->role === User::ROLE_RECTOR) {
+                                    $canEdit = false;
+                                } elseif ($user->role === User::ROLE_ADMIN) {
                                     $canEdit = true;
-                                } elseif ($user->role === User::ROLE_RECTOR) {
+                                } elseif ($user->role === User::ROLE_HEAD) {
+                                    // Руководитель может редактировать проекты своего подразделения
                                     if ($project->department_id && $user->department_id &&
                                         (string)$project->department_id === (string)$user->department_id) {
                                         $canEdit = true;
                                     }
-                                } elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER])) {
+                                } elseif ($user->role === User::ROLE_TOP_MANAGER) {
+                                    // Топ-менеджер может редактировать проекты своего подразделения
                                     if ($project->department_id && $user->department_id &&
                                         (string)$project->department_id === (string)$user->department_id) {
                                         $canEdit = true;
                                     }
                                 }
+                                // Менеджер не может редактировать проекты, только задачи
                                 
                                 if ($canEdit): ?>
                                     <?= Html::a(

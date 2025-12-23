@@ -14,7 +14,6 @@ class SignupForm extends Model
     public $email;
     public $password;
     public $password_repeat;
-    public $department_id;
 
     /**
      * @return array the validation rules.
@@ -26,7 +25,6 @@ class SignupForm extends Model
             ['email', 'email'],
             ['email', 'unique', 'targetClass' => User::class, 'message' => 'Этот email уже используется.'],
             [['fio'], 'string', 'max' => 255],
-            [['department_id'], 'exist', 'targetClass' => \app\models\Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
             ['password', 'string', 'min' => 6, 'message' => 'Пароль должен содержать минимум 6 символов.'],
             ['password_repeat', 'compare', 'compareAttribute' => 'password', 'message' => 'Пароли не совпадают.'],
         ];
@@ -42,7 +40,6 @@ class SignupForm extends Model
             'email' => 'Email',
             'password' => 'Пароль',
             'password_repeat' => 'Повторите пароль',
-            'department_id' => 'Подразделение',
         ];
     }
 
@@ -60,7 +57,7 @@ class SignupForm extends Model
         $user = new User();
         $user->fio = $this->fio;
         $user->email = $this->email;
-        $user->department_id = $this->department_id ? new \MongoDB\BSON\ObjectId($this->department_id) : null;
+        $user->department_id = null; // Подразделение назначается администратором
         $user->role = User::ROLE_EXECUTOR; // Автоматически устанавливаем роль executor
         $user->setPassword($this->password);
 

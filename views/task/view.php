@@ -16,8 +16,8 @@ $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
 $isExecutor = $user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user);
-$canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]) || $isExecutor;
-$canComment = $user->role !== User::ROLE_RECTOR; // Rector не может комментировать
+$canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]) || $isExecutor;
+$canComment = $user->role !== User::ROLE_RECTOR; // Ректор не может комментировать
 
 // Получаем комментарии
 $comments = Comment::find()
@@ -54,11 +54,18 @@ $comments = Comment::find()
                     </p>
                 </div>
                 <div class="text-end">
-                    <?= Html::a(
-                        '<i class="fas fa-arrow-left me-2"></i>К проекту',
-                        ['project/view', 'id' => (string)$model->project_id],
-                        ['class' => 'nku-btn nku-btn--secondary mb-2']
-                    ) ?>
+                    <div class="d-flex gap-2 mb-2">
+                        <?= Html::a(
+                            '<i class="fas fa-columns me-2"></i>К доске',
+                            ['project/kanban', 'id' => (string)$model->project_id],
+                            ['class' => 'nku-btn nku-btn--info nku-btn--outline']
+                        ) ?>
+                        <?= Html::a(
+                            '<i class="fas fa-arrow-left me-2"></i>К проекту',
+                            ['project/view', 'id' => (string)$model->project_id],
+                            ['class' => 'nku-btn nku-btn--secondary']
+                        ) ?>
+                    </div>
                     <?php if ($canEditTask): ?>
                         <div class="d-flex gap-2">
                             <?= Html::a(
@@ -66,7 +73,32 @@ $comments = Comment::find()
                                 ['update', 'id' => (string)$model->_id],
                                 ['class' => 'nku-btn nku-btn--primary']
                             ) ?>
-                            <?php if (in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN])): ?>
+                            <?php if (in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN])): ?>
+                                <?php if ($model->is_archived): ?>
+                                    <?= Html::a(
+                                        '<i class="fas fa-box-open me-2"></i>Разархивировать',
+                                        ['unarchive', 'id' => (string)$model->_id],
+                                        [
+                                            'class' => 'nku-btn nku-btn--success',
+                                            'data' => [
+                                                'confirm' => 'Вы уверены, что хотите разархивировать эту задачу?',
+                                                'method' => 'post',
+                                            ],
+                                        ]
+                                    ) ?>
+                                <?php elseif ($model->status === Task::STATUS_DONE): ?>
+                                    <?= Html::a(
+                                        '<i class="fas fa-archive me-2"></i>В архив',
+                                        ['archive', 'id' => (string)$model->_id],
+                                        [
+                                            'class' => 'nku-btn nku-btn--warning',
+                                            'data' => [
+                                                'confirm' => 'Вы уверены, что хотите архивировать эту задачу?',
+                                                'method' => 'post',
+                                            ],
+                                        ]
+                                    ) ?>
+                                <?php endif; ?>
                                 <?= Html::a(
                                     '<i class="fas fa-trash me-2"></i>Удалить',
                                     ['delete', 'id' => (string)$model->_id],
@@ -91,10 +123,26 @@ $comments = Comment::find()
                         <i class="fas fa-tasks me-2"></i>
                         Прогресс выполнения
                     </label>
+                    <?php
+                    $totalSubtasks = $model->getTotalSubtasksCount();
+                    $completedSubtasks = $model->getCompletedSubtasksCount();
+                    $progressFormat = $model->getProgressFormat();
+                    ?>
+                    <?php if ($totalSubtasks > 0): ?>
+                        <div class="mb-2" id="progress-format-display">
+                            <span class="fw-bold fs-5" id="progress-format-text"><?= $progressFormat ?></span>
+                            <small class="text-muted ms-2" id="progress-percent-text">(<?= $model->progress ?>%)</small>
+                        </div>
+                    <?php else: ?>
+                        <div class="mb-2" id="progress-format-display">
+                            <span class="fw-bold fs-5" id="progress-format-text"><?= $model->progress ?>%</span>
+                        </div>
+                    <?php endif; ?>
                     <div class="nku-progress nku-progress--lg">
                         <div class="nku-progress__bar nku-progress__bar--<?= $model->progress >= 100 ? 'success' : ($model->progress >= 50 ? 'primary' : 'warning') ?>" 
+                             id="progress-bar"
                              style="width: <?= $model->progress ?>%">
-                            <span class="nku-progress__label"><?= $model->progress ?>%</span>
+                            <span class="nku-progress__label" id="progress-label"><?= $model->progress ?>%</span>
                         </div>
                     </div>
                 </div>
@@ -157,6 +205,63 @@ $comments = Comment::find()
                 </div>
             </div>
 
+            <!-- Subtasks (To-Do List) -->
+            <?php
+            $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
+            if (!empty($subtasks) || $canEditTask):
+            ?>
+            <div class="nku-card mb-4">
+                <div class="nku-card__header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list-check me-2"></i>
+                        Подзадачи (To-Do лист)
+                        <?php if (!empty($subtasks)): ?>
+                            <span class="nku-badge nku-badge--secondary ms-2" id="subtasks-progress-badge">
+                                <?= $model->getProgressFormat() ?>
+                            </span>
+                        <?php endif; ?>
+                    </h5>
+                </div>
+                <div class="nku-card__body">
+                    <?php if (empty($subtasks)): ?>
+                        <div class="nku-empty nku-empty--sm">
+                            <div class="nku-empty__icon">
+                                <i class="far fa-list"></i>
+                            </div>
+                            <div class="nku-empty__title">Подзадач пока нет</div>
+                            <div class="nku-empty__description">
+                                Добавьте подзадачи при редактировании задачи
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <div class="subtasks-list">
+                            <?php foreach ($subtasks as $index => $subtask): ?>
+                                <?php
+                                $subtaskText = isset($subtask['text']) ? $subtask['text'] : '';
+                                $isCompleted = isset($subtask['completed']) && $subtask['completed'] === true;
+                                ?>
+                                <div class="subtask-item d-flex align-items-center mb-2 p-2 rounded <?= $isCompleted ? 'bg-light' : '' ?>" 
+                                     data-subtask-index="<?= $index ?>">
+                                    <div class="form-check me-3">
+                                        <input class="form-check-input subtask-checkbox" 
+                                               type="checkbox" 
+                                               <?= $isCompleted ? 'checked' : '' ?>
+                                               data-task-id="<?= (string)$model->_id ?>"
+                                               data-subtask-index="<?= $index ?>"
+                                               <?= !$canEditTask ? 'disabled' : '' ?>
+                                               style="width: 1.25rem; height: 1.25rem; cursor: pointer;">
+                                    </div>
+                                    <div class="flex-grow-1 <?= $isCompleted ? 'text-decoration-line-through text-muted' : '' ?>">
+                                        <?= Html::encode($subtaskText) ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <!-- Assignment Info -->
             <div class="nku-card mb-4">
                 <div class="nku-card__header">
@@ -173,8 +278,12 @@ $comments = Comment::find()
                                 <i class="fas fa-user-circle text-primary me-2" style="font-size: 1.5rem;"></i>
                                 <div>
                                     <div class="fw-semibold"><?= Html::encode($model->getExecutorDisplayName()) ?></div>
-                                    <?php if ($model->executor_user_id && $model->executorUser): ?>
-                                        <small class="text-muted"><?= Html::encode($model->executorUser->email ?? '') ?></small>
+                                    <?php 
+                                    $assignedUsers = $model->getAssignedUsers();
+                                    if (!empty($assignedUsers) && count($assignedUsers) === 1): 
+                                        $executorUser = $assignedUsers[0];
+                                    ?>
+                                        <small class="text-muted"><?= Html::encode($executorUser->email ?? '') ?></small>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -418,7 +527,16 @@ $comments = Comment::find()
 
                         <div class="nku-meta-item">
                             <label>Прогресс</label>
-                            <div class="fw-semibold"><?= $model->progress ?>%</div>
+                            <div class="fw-semibold" id="meta-progress">
+                                <?php
+                                $totalSubtasks = $model->getTotalSubtasksCount();
+                                if ($totalSubtasks > 0):
+                                    echo $model->getProgressFormat() . ' (' . $model->progress . '%)';
+                                else:
+                                    echo $model->progress . '%';
+                                endif;
+                                ?>
+                            </div>
                         </div>
 
                         <?php if ($model->project->department): ?>
@@ -581,4 +699,167 @@ $comments = Comment::find()
 .nku-empty--sm .nku-empty__description {
     font-size: 0.75rem;
 }
+
+/* Subtasks */
+.subtasks-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.subtask-item {
+    transition: background-color 0.2s;
+}
+
+.subtask-item:hover {
+    background-color: var(--nku-color-bg-hover, #f8f9fa) !important;
+}
+
+.subtask-checkbox:disabled {
+    cursor: not-allowed !important;
+    opacity: 0.6;
+}
+
+/* Кнопка "К доске" с рамками */
+.nku-btn--info.nku-btn--outline {
+    border: 2px solid var(--nku-color-info, #7DB4B5) !important;
+    background-color: transparent !important;
+    color: var(--nku-color-info, #7DB4B5) !important;
+}
+
+.nku-btn--info.nku-btn--outline:hover {
+    background-color: var(--nku-color-info, #7DB4B5) !important;
+    color: white !important;
+    border-color: var(--nku-color-info, #7DB4B5) !important;
+}
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Получаем CSRF токен из PHP
+    var csrfToken = '<?= Yii::$app->request->csrfToken ?>';
+    var csrfParam = '<?= Yii::$app->request->csrfParam ?>';
+    
+    // Обработка изменения статуса подзадачи
+    document.querySelectorAll('.subtask-checkbox').forEach(function(checkbox) {
+        checkbox.addEventListener('change', function() {
+            if (this.disabled) {
+                return;
+            }
+            
+            var checkboxElement = this;
+            var taskId = this.getAttribute('data-task-id');
+            var subtaskIndex = parseInt(this.getAttribute('data-subtask-index'));
+            var isCompleted = this.checked;
+            
+            // Блокируем чекбокс на время запроса
+            checkboxElement.disabled = true;
+            
+            // Формируем тело запроса
+            var formData = new URLSearchParams();
+            formData.append('task_id', taskId);
+            formData.append('subtask_index', subtaskIndex);
+            formData.append('completed', isCompleted ? '1' : '0');
+            formData.append(csrfParam, csrfToken);
+            
+            console.log('Отправка запроса:', {
+                taskId: taskId,
+                subtaskIndex: subtaskIndex,
+                completed: isCompleted
+            });
+            
+            // Отправляем AJAX запрос
+            fetch('<?= Url::to(['task/toggle-subtask']) ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: formData.toString()
+            })
+            .then(response => {
+                console.log('Ответ получен, статус:', response.status);
+                if (!response.ok) {
+                    throw new Error('HTTP error! status: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Данные ответа:', data);
+                checkboxElement.disabled = false;
+                
+                if (data.success) {
+                    // Обновляем визуальное состояние подзадачи
+                    var subtaskItem = checkboxElement.closest('.subtask-item');
+                    var subtaskText = subtaskItem.querySelector('.subtask-text');
+                    
+                    if (isCompleted) {
+                        subtaskItem.classList.add('bg-light');
+                        if (subtaskText) {
+                            subtaskText.classList.add('text-decoration-line-through', 'text-muted');
+                        }
+                    } else {
+                        subtaskItem.classList.remove('bg-light');
+                        if (subtaskText) {
+                            subtaskText.classList.remove('text-decoration-line-through', 'text-muted');
+                        }
+                    }
+                    
+                    // Обновляем прогресс, если он отображается
+                    var progressFormat = data.progress_format || '0/0';
+                    var progressPercent = data.progress || 0;
+                    
+                    // Обновляем счетчик прогресса в заголовке подзадач
+                    var subtasksBadge = document.getElementById('subtasks-progress-badge');
+                    if (subtasksBadge) {
+                        subtasksBadge.textContent = progressFormat;
+                    }
+                    
+                    // Обновляем прогресс-бар
+                    var progressBar = document.getElementById('progress-bar');
+                    var progressLabel = document.getElementById('progress-label');
+                    if (progressBar) {
+                        progressBar.style.width = progressPercent + '%';
+                        progressBar.className = 'nku-progress__bar nku-progress__bar--' + 
+                            (progressPercent >= 100 ? 'success' : (progressPercent >= 50 ? 'primary' : 'warning'));
+                    }
+                    if (progressLabel) {
+                        progressLabel.textContent = progressPercent + '%';
+                    }
+                    
+                    // Обновляем текст прогресса в заголовке
+                    var progressFormatText = document.getElementById('progress-format-text');
+                    var progressPercentText = document.getElementById('progress-percent-text');
+                    if (progressFormatText) {
+                        progressFormatText.textContent = progressFormat;
+                    }
+                    if (progressPercentText) {
+                        progressPercentText.textContent = '(' + progressPercent + '%)';
+                    }
+                    
+                    // Обновляем прогресс в мета-информации
+                    var metaProgress = document.getElementById('meta-progress');
+                    if (metaProgress) {
+                        var totalSubtasks = progressFormat.split('/')[1];
+                        if (totalSubtasks && parseInt(totalSubtasks) > 0) {
+                            metaProgress.textContent = progressFormat + ' (' + progressPercent + '%)';
+                        } else {
+                            metaProgress.textContent = progressPercent + '%';
+                        }
+                    }
+                } else {
+                    // Откатываем изменение
+                    checkboxElement.checked = !isCompleted;
+                    alert(data.message || 'Ошибка при изменении статуса подзадачи');
+                }
+            })
+            .catch(error => {
+                // Откатываем изменение
+                checkboxElement.checked = !isCompleted;
+                checkboxElement.disabled = false;
+                console.error('Ошибка:', error);
+                alert('Ошибка при изменении статуса подзадачи: ' + error.message);
+            });
+        });
+    });
+});
+</script>

@@ -21,7 +21,6 @@ $brandUrl = Yii::$app->homeUrl;
         <span aria-hidden="true"><i class="fas fa-tasks"></i></span>
         <span>
             <div class="nku-sidebar__brand-title"><?= Html::encode(Yii::$app->name) ?></div>
-            <div class="nku-sidebar__brand-subtitle">NKU Track</div>
         </span>
     </a>
 
@@ -32,9 +31,6 @@ $brandUrl = Yii::$app->homeUrl;
             </a>
             <a class="nku-nav__item <?= $isActive('site/about') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/site/about'])) ?>">
                 <i class="fas fa-circle-info" aria-hidden="true"></i> <span>О нас</span>
-            </a>
-            <a class="nku-nav__item <?= $isActive('site/contact') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/site/contact'])) ?>">
-                <i class="fas fa-envelope" aria-hidden="true"></i> <span>Контакты</span>
             </a>
 
             <div class="nku-nav__section">Аккаунт</div>
@@ -53,40 +49,10 @@ $brandUrl = Yii::$app->homeUrl;
                 <i class="fas fa-project-diagram" aria-hidden="true"></i> <span>Проекты</span>
             </a>
 
-            <?php if ($user && in_array($user->role, [\app\models\User::ROLE_RECTOR, \app\models\User::ROLE_TOP_MANAGER], true)): ?>
+            <?php if ($user && in_array($user->role, [\app\models\User::ROLE_HEAD, \app\models\User::ROLE_TOP_MANAGER], true)): ?>
                 <a class="nku-nav__item <?= $isActive('roadmap') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/roadmap/index'])) ?>">
                     <i class="fas fa-road" aria-hidden="true"></i> <span>Дорожная карта</span>
                 </a>
-            <?php endif; ?>
-
-            <?php
-            // Feature flags для планируемых функций
-            $FEATURE_REPORTS_UI = false; // true для включения UI отчётов
-            $FEATURE_NOTIFICATIONS_UI = false; // true для включения UI уведомлений
-            ?>
-
-            <?php if ($FEATURE_REPORTS_UI): ?>
-                <a class="nku-nav__item <?= $isActive('report') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/report/index'])) ?>">
-                    <i class="fas fa-file-alt" aria-hidden="true"></i> <span>Отчёты</span>
-                </a>
-            <?php else: ?>
-                <div class="nku-nav__item nku-nav__item--disabled" title="Функционал в разработке">
-                    <i class="fas fa-file-alt" aria-hidden="true"></i> 
-                    <span>Отчёты</span>
-                    <span class="nku-badge nku-badge--xs nku-badge--warning ms-auto">Soon</span>
-                </div>
-            <?php endif; ?>
-
-            <?php if ($FEATURE_NOTIFICATIONS_UI): ?>
-                <a class="nku-nav__item <?= $isActive('notification') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/notification/index'])) ?>">
-                    <i class="fas fa-bell" aria-hidden="true"></i> <span>Уведомления</span>
-                </a>
-            <?php else: ?>
-                <div class="nku-nav__item nku-nav__item--disabled" title="Функционал в разработке">
-                    <i class="fas fa-bell" aria-hidden="true"></i> 
-                    <span>Уведомления</span>
-                    <span class="nku-badge nku-badge--xs nku-badge--warning ms-auto">Soon</span>
-                </div>
             <?php endif; ?>
 
             <?php if ($user && $user->role === \app\models\User::ROLE_ADMIN): ?>
@@ -97,7 +63,7 @@ $brandUrl = Yii::$app->homeUrl;
             <?php endif; ?>
 
             <div class="nku-nav__section">Аккаунт</div>
-            <a class="nku-nav__item" href="<?= Html::encode(Url::to(['/admin/user/view', 'id' => (string)$user->_id])) ?>">
+            <a class="nku-nav__item <?= $isActive('profile') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/profile/index'])) ?>">
                 <i class="fas fa-user-circle" aria-hidden="true"></i> <span>Профиль</span>
             </a>
             <?= Html::beginForm(['/site/logout'], 'post', ['class' => 'd-grid']) ?>

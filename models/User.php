@@ -14,7 +14,7 @@ use app\models\Task;
  * @property string $fio
  * @property string $email
  * @property string $password_hash
- * @property string $role rector / manager / executor / admin
+ * @property string $role admin / head / top_manager / manager / executor / rector
  * @property \MongoDB\BSON\ObjectId|null $department_id ссылка на подразделение
  * @property \MongoDB\BSON\ObjectId|null $subdepartment_id ссылка на департамент внутри подразделения
  * @property \MongoDB\BSON\UTCDateTime $created_at
@@ -22,11 +22,12 @@ use app\models\Task;
  */
 class User extends ActiveRecord implements IdentityInterface
 {
-    const ROLE_ADMIN = 'admin';
-    const ROLE_RECTOR = 'rector'; // Руководитель - может создать проект для своего подразделения
-    const ROLE_TOP_MANAGER = 'top_manager'; // Топ-менеджер - может сделать ТЗ для проектов, редактировать его
-    const ROLE_MANAGER = 'manager'; // Менеджер - создавать задачи и назначать исполнителей
-    const ROLE_EXECUTOR = 'executor'; // Исполнитель - видит задачи, перемещает их по доске
+    const ROLE_ADMIN = 'admin'; // Админ - доступ ко всему
+    const ROLE_HEAD = 'head'; // Руководитель - внутри подразделения, может создавать проекты, дорожные карты, задачи
+    const ROLE_TOP_MANAGER = 'top_manager'; // Топ-менеджер - то же самое что и Руководитель, по иерархии ниже
+    const ROLE_MANAGER = 'manager'; // Менеджер - создавать/редактировать/просматривать задачи, отмечать выполнение, канбан-доска
+    const ROLE_EXECUTOR = 'executor'; // Исполнитель - просмотр задач и проектов где участвует, отмечать выполнение подзадач, канбан-доска
+    const ROLE_RECTOR = 'rector'; // Ректор - просмотр всех проектов, подразделений, дорожных карт, задач (только мониторинг)
 
     /**
      * @return string the name of the index associated with this ActiveRecord class.
@@ -78,7 +79,7 @@ class User extends ActiveRecord implements IdentityInterface
             [['email'], 'unique', 'when' => function($model) {
                 return $model->isNewRecord || $model->isAttributeChanged('email');
             }],
-            [['role'], 'in', 'range' => [self::ROLE_ADMIN, self::ROLE_RECTOR, self::ROLE_TOP_MANAGER, self::ROLE_MANAGER, self::ROLE_EXECUTOR]],
+            [['role'], 'in', 'range' => [self::ROLE_ADMIN, self::ROLE_HEAD, self::ROLE_TOP_MANAGER, self::ROLE_MANAGER, self::ROLE_EXECUTOR, self::ROLE_RECTOR]],
             [['fio', 'email', 'password_hash', 'role'], 'string'],
             [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
             [['subdepartment_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],

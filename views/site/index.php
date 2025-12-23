@@ -21,7 +21,8 @@ $this->params['breadcrumbs'] = [];
 // Маппинг ролей для отображения
 $roleLabels = [
     User::ROLE_ADMIN => ['label' => 'Администратор', 'icon' => 'fa-shield-alt', 'class' => 'danger'],
-    User::ROLE_RECTOR => ['label' => 'Руководитель', 'icon' => 'fa-crown', 'class' => 'warning'],
+    User::ROLE_HEAD => ['label' => 'Руководитель', 'icon' => 'fa-crown', 'class' => 'warning'],
+    User::ROLE_RECTOR => ['label' => 'Ректор', 'icon' => 'fa-eye', 'class' => 'info'],
     User::ROLE_TOP_MANAGER => ['label' => 'Топ-менеджер', 'icon' => 'fa-star', 'class' => 'info'],
     User::ROLE_MANAGER => ['label' => 'Менеджер', 'icon' => 'fa-user-tie', 'class' => 'primary'],
     User::ROLE_EXECUTOR => ['label' => 'Исполнитель', 'icon' => 'fa-user', 'class' => 'secondary'],
@@ -37,7 +38,7 @@ if (Yii::$app->user->isGuest) {
                         <div class="mb-4">
                             <i class="fas fa-tasks" style="font-size: 4rem; color: var(--nku-color-primary);"></i>
                         </div>
-                        <h1 class="display-4 mb-3">Добро пожаловать в NKU Track</h1>
+                        <h1 class="display-4 mb-3">Добро пожаловать в KU Track</h1>
                         <p class="lead text-muted mb-4">
                             Система управления проектами и задачами для эффективной работы вашей команды
                         </p>
@@ -85,6 +86,11 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                             <span class="text-muted">
                                 <i class="fas fa-building me-1"></i>
                                 <?= Html::encode($user->department->name) ?>
+                            </span>
+                        <?php elseif ($user->role !== User::ROLE_ADMIN && $user->role !== User::ROLE_RECTOR): ?>
+                            <span class="badge bg-warning text-dark">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                Вы не прикреплены ни к одному подразделению
                             </span>
                         <?php endif; ?>
                     </div>
@@ -169,7 +175,7 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
         </div>
         <div class="nku-card__body">
             <div class="row">
-                <?php if (in_array($user->role, [User::ROLE_RECTOR, User::ROLE_ADMIN])): ?>
+                <?php if (in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_ADMIN]) && $user->role !== User::ROLE_RECTOR): ?>
                     <div class="col-md-3 col-sm-6 mb-2">
                         <?= Html::a(
                             '<i class="fas fa-plus-circle me-2"></i>Создать проект', 
@@ -179,7 +185,7 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                     </div>
                 <?php endif; ?>
                 
-                <?php if (in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN])): ?>
+                <?php if (in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN])): ?>
                     <?php if (!empty($recentProjects)): ?>
                         <div class="col-md-3 col-sm-6 mb-2">
                             <?= Html::a(
@@ -234,7 +240,7 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                                 <div class="nku-empty__description">
                                     Проекты появятся здесь после их создания
                                 </div>
-                                <?php if (in_array($user->role, [User::ROLE_RECTOR, User::ROLE_ADMIN])): ?>
+                                <?php if (in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_ADMIN]) && $user->role !== User::ROLE_RECTOR): ?>
                                     <div class="nku-empty__action">
                                         <?= Html::a(
                                             '<i class="fas fa-plus me-2"></i>Создать проект',
@@ -247,6 +253,7 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                         <?php else: ?>
                             <div class="list-group list-group-flush">
                                 <?php foreach ($recentProjects as $project): ?>
+                                    <?php if (!$project || !$project->title): continue; endif; ?>
                                     <div class="list-group-item px-0 border-bottom">
                                         <div class="d-flex justify-content-between align-items-start">
                                             <div class="flex-grow-1">
@@ -256,10 +263,12 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                                                     ['class' => 'text-decoration-none fw-semibold']
                                                 ) ?>
                                                 <div class="d-flex align-items-center gap-2 mt-1">
-                                                    <small class="text-muted">
-                                                        <i class="far fa-calendar me-1"></i>
-                                                        <?= date('d.m.Y', $project->created_at->toDateTime()->getTimestamp()) ?>
-                                                    </small>
+                                                    <?php if ($project->created_at instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                                        <small class="text-muted">
+                                                            <i class="far fa-calendar me-1"></i>
+                                                            <?= date('d.m.Y', $project->created_at->toDateTime()->getTimestamp()) ?>
+                                                        </small>
+                                                    <?php endif; ?>
                                                     <?php if ($project->progress): ?>
                                                         <small class="text-muted">
                                                             <i class="fas fa-chart-line me-1"></i>
@@ -315,6 +324,7 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                     <?php else: ?>
                         <div class="list-group list-group-flush">
                             <?php foreach ($tasksToShow as $task): ?>
+                                <?php if (!$task || !$task->title): continue; endif; ?>
                                 <div class="list-group-item px-0 border-bottom">
                                     <div class="d-flex justify-content-between align-items-start">
                                         <div class="flex-grow-1">
@@ -324,10 +334,15 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                                                 ['class' => 'text-decoration-none fw-semibold']
                                             ) ?>
                                             <div class="d-flex align-items-center gap-2 mt-1">
-                                                <small class="text-muted">
-                                                    <i class="fas fa-project-diagram me-1"></i>
-                                                    <?= Html::encode($task->project->title) ?>
-                                                </small>
+                                                <?php 
+                                                $project = $task->project;
+                                                if ($project && $project->title): 
+                                                ?>
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-project-diagram me-1"></i>
+                                                        <?= Html::encode($project->title) ?>
+                                                    </small>
+                                                <?php endif; ?>
                                                 <span class="nku-badge nku-badge--priority-<?= $task->priority ?>">
                                                     <?= $task->getPriorityLabel() ?>
                                                 </span>

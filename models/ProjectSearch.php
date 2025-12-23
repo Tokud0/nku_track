@@ -79,10 +79,14 @@ class ProjectSearch extends Project
         if (!empty($this->status)) {
             $query->andFilterWhere(['status' => $this->status]);
         }
-        if (!empty($this->department_id)) {
-            $departmentId = is_string($this->department_id) ? new \MongoDB\BSON\ObjectId($this->department_id) : $this->department_id;
-            $query->andFilterWhere(['department_id' => $departmentId]);
+        // Фильтр по подразделению из формы применяется только если departmentId не был явно установлен в null
+        // Если departmentId = null (для ректора), игнорируем фильтр из формы - ректор видит все проекты
+        if (!empty($this->department_id) && $departmentId !== null) {
+            // Применяем фильтр из формы только если departmentId не null
+            $filterDeptId = is_string($this->department_id) ? new \MongoDB\BSON\ObjectId($this->department_id) : $this->department_id;
+            $query->andFilterWhere(['department_id' => $filterDeptId]);
         }
+        // Если departmentId === null (явно передан), фильтр из формы игнорируется - показываются все проекты
 
         return $dataProvider;
     }

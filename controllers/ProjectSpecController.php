@@ -87,21 +87,34 @@ class ProjectSpecController extends Controller
         
         $user = Yii::$app->user->identity;
         
-        // Админ, ректор (создатель проекта) и топ-менеджер могут создавать ТЗ
-        if ($user->role !== User::ROLE_ADMIN && 
-            $user->role !== User::ROLE_TOP_MANAGER &&
-            ($user->role !== User::ROLE_RECTOR || (string)$project->manager_id !== (string)$user->_id)) {
-            Yii::$app->session->setFlash('error', 'Вы не можете создавать ТЗ для этого проекта.');
+        // Ректор может только просматривать, не может создавать ТЗ
+        if ($user->role === User::ROLE_RECTOR) {
+            Yii::$app->session->setFlash('error', 'Ректор может только просматривать технические задания.');
             return $this->redirect(['project/view', 'id' => (string)$projectIdObj]);
         }
         
-        // Топ-менеджер имеет доступ только к проектам своего подразделения
-        if ($user->role === User::ROLE_TOP_MANAGER) {
+        // Админ может создавать ТЗ для всех проектов
+        if ($user->role === User::ROLE_ADMIN) {
+            // Разрешаем создание
+        }
+        // Руководитель может создавать ТЗ для проектов своего подразделения
+        elseif ($user->role === User::ROLE_HEAD) {
             if (!$project->department_id || !$user->department_id || 
                 (string)$project->department_id !== (string)$user->department_id) {
-                Yii::$app->session->setFlash('error', 'Вы не можете создавать ТЗ для проектов других подразделений.');
+                Yii::$app->session->setFlash('error', 'Вы можете создавать ТЗ только для проектов своего подразделения.');
                 return $this->redirect(['project/view', 'id' => (string)$projectIdObj]);
             }
+        }
+        // Топ-менеджер может создавать ТЗ для проектов своего подразделения
+        elseif ($user->role === User::ROLE_TOP_MANAGER) {
+            if (!$project->department_id || !$user->department_id || 
+                (string)$project->department_id !== (string)$user->department_id) {
+                Yii::$app->session->setFlash('error', 'Вы можете создавать ТЗ только для проектов своего подразделения.');
+                return $this->redirect(['project/view', 'id' => (string)$projectIdObj]);
+            }
+        } else {
+            Yii::$app->session->setFlash('error', 'У вас нет прав для создания ТЗ.');
+            return $this->redirect(['project/view', 'id' => (string)$projectIdObj]);
         }
         
         // Проверяем, не существует ли уже ТЗ
@@ -192,21 +205,34 @@ class ProjectSpecController extends Controller
             return $this->redirect(['project/view', 'id' => $project_id]);
         }
         
-        // Админ, ректор (создатель проекта) и топ-менеджер могут редактировать ТЗ
-        if ($user->role !== User::ROLE_ADMIN && 
-            $user->role !== User::ROLE_TOP_MANAGER &&
-            ($user->role !== User::ROLE_RECTOR || (string)$project->manager_id !== (string)$user->_id)) {
-            Yii::$app->session->setFlash('error', 'Вы не можете редактировать ТЗ для этого проекта.');
+        // Ректор может только просматривать, не может редактировать ТЗ
+        if ($user->role === User::ROLE_RECTOR) {
+            Yii::$app->session->setFlash('error', 'Ректор может только просматривать технические задания.');
             return $this->redirect(['project/view', 'id' => $project_id]);
         }
         
-        // Топ-менеджер имеет доступ только к проектам своего подразделения
-        if ($user->role === User::ROLE_TOP_MANAGER) {
+        // Админ может редактировать ТЗ для всех проектов
+        if ($user->role === User::ROLE_ADMIN) {
+            // Разрешаем редактирование
+        }
+        // Руководитель может редактировать ТЗ для проектов своего подразделения
+        elseif ($user->role === User::ROLE_HEAD) {
             if (!$project->department_id || !$user->department_id || 
                 (string)$project->department_id !== (string)$user->department_id) {
-                Yii::$app->session->setFlash('error', 'Вы не можете редактировать ТЗ для проектов других подразделений.');
+                Yii::$app->session->setFlash('error', 'Вы можете редактировать ТЗ только для проектов своего подразделения.');
                 return $this->redirect(['project/view', 'id' => $project_id]);
             }
+        }
+        // Топ-менеджер может редактировать ТЗ для проектов своего подразделения
+        elseif ($user->role === User::ROLE_TOP_MANAGER) {
+            if (!$project->department_id || !$user->department_id || 
+                (string)$project->department_id !== (string)$user->department_id) {
+                Yii::$app->session->setFlash('error', 'Вы можете редактировать ТЗ только для проектов своего подразделения.');
+                return $this->redirect(['project/view', 'id' => $project_id]);
+            }
+        } else {
+            Yii::$app->session->setFlash('error', 'У вас нет прав для редактирования ТЗ.');
+            return $this->redirect(['project/view', 'id' => $project_id]);
         }
         
         $model = ProjectSpec::findOne(['project_id' => $project_id]);
@@ -315,8 +341,13 @@ class ProjectSpecController extends Controller
             return;
         }
         
-        // Ректор имеет доступ к проектам своего подразделения
+        // Ректор имеет доступ ко всем проектам (только просмотр)
         if ($user->role === User::ROLE_RECTOR) {
+            return;
+        }
+        
+        // Руководитель имеет доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_HEAD) {
             if ($project->department_id && $user->department_id && 
                 (string)$project->department_id === (string)$user->department_id) {
                 return;

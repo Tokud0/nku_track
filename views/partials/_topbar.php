@@ -23,13 +23,6 @@ $title = $this->title ?: Yii::$app->name;
             <i class="fas fa-bars" aria-hidden="true"></i>
         </button>
 
-        <?php if (!$isGuest): ?>
-            <!-- Search (только для авторизованных) -->
-            <div class="nku-topbar__search d-none d-md-block">
-                <i class="fas fa-search"></i>
-                <input type="search" placeholder="Поиск проектов, задач..." />
-            </div>
-        <?php endif; ?>
     </div>
 
     <!-- Right: notifications + user menu -->
@@ -38,11 +31,6 @@ $title = $this->title ?: Yii::$app->name;
             <a class="nku-btn nku-btn--secondary" href="<?= Html::encode(Url::to(['/site/login'])) ?>">Вход</a>
             <a class="nku-btn nku-btn--primary" href="<?= Html::encode(Url::to(['/site/signup'])) ?>">Регистрация</a>
         <?php else: ?>
-            <!-- Notifications icon (with badge) -->
-            <button class="nku-topbar__icon nku-topbar__icon--badge" title="Уведомления" aria-label="Уведомления">
-                <i class="fas fa-bell"></i>
-            </button>
-
             <!-- User dropdown -->
             <div class="dropdown">
                 <button
@@ -70,7 +58,7 @@ $title = $this->title ?: Yii::$app->name;
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                     <li>
-                        <a class="dropdown-item" href="<?= Html::encode(Url::to(['/admin/user/view', 'id' => (string)$user->_id])) ?>">
+                        <a class="dropdown-item" href="<?= Html::encode(Url::to(['/profile/index'])) ?>">
                             <i class="fas fa-user-circle me-2"></i> Профиль
                         </a>
                     </li>

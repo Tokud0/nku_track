@@ -6,9 +6,11 @@ use app\models\User;
 /** @var yii\web\View $this */
 /** @var int $totalUsers */
 /** @var int $totalAdmins */
+/** @var int $totalHeads */
+/** @var int $totalRectors */
+/** @var int $totalTopManagers */
 /** @var int $totalManagers */
 /** @var int $totalExecutors */
-/** @var int $totalRectors */
 
 $this->title = 'Панель администратора';
 $this->params['breadcrumbs'][] = $this->title;
@@ -22,24 +24,24 @@ $this->params['breadcrumbs'][] = $this->title;
             <h3>Статистика</h3>
             <div class="row">
                 <div class="col-md-3">
-                    <div class="card text-white bg-primary mb-3">
-                        <div class="card-header">Всего пользователей</div>
-                        <div class="card-body">
-                            <h2 class="card-title"><?= $totalUsers ?></h2>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card text-white bg-danger mb-3">
-                        <div class="card-header">Администраторы</div>
-                        <div class="card-body">
-                            <h2 class="card-title"><?= $totalAdmins ?></h2>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
                     <div class="card text-white bg-warning mb-3">
                         <div class="card-header">Руководители</div>
+                        <div class="card-body">
+                            <h2 class="card-title"><?= $totalHeads ?></h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-success mb-3">
+                        <div class="card-header">Топ-менеджеры</div>
+                        <div class="card-body">
+                            <h2 class="card-title"><?= $totalTopManagers ?></h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-secondary mb-3">
+                        <div class="card-header">Менеджеры</div>
                         <div class="card-body">
                             <h2 class="card-title"><?= $totalManagers ?></h2>
                         </div>

@@ -72,8 +72,33 @@ class SiteController extends Controller
         // Статистика для всех ролей
         $data['user'] = $user;
         
-        // Для всех авторизованных пользователей показываем проекты их подразделения
-        if ($user->department_id) {
+        // Для администратора и ректора показываем все проекты и задачи
+        if ($user->role === \app\models\User::ROLE_ADMIN || $user->role === \app\models\User::ROLE_RECTOR) {
+            $data['totalProjects'] = \app\models\Project::find()->count();
+            $data['activeProjects'] = \app\models\Project::find()
+                ->where(['status' => \app\models\Project::STATUS_ACTIVE])
+                ->count();
+            
+            // Все задачи
+            $allTasks = \app\models\Task::find()->all();
+            $data['totalTasks'] = count($allTasks);
+            
+            // Сортируем по дате создания
+            usort($allTasks, function($a, $b) {
+                $aTime = $a->created_at instanceof \MongoDB\BSON\UTCDateTime ? $a->created_at->toDateTime()->getTimestamp() : 0;
+                $bTime = $b->created_at instanceof \MongoDB\BSON\UTCDateTime ? $b->created_at->toDateTime()->getTimestamp() : 0;
+                return $bTime - $aTime;
+            });
+            $data['recentTasks'] = array_slice($allTasks, 0, 5);
+            
+            // Последние проекты
+            $data['recentProjects'] = \app\models\Project::find()
+                ->orderBy(['created_at' => SORT_DESC])
+                ->limit(5)
+                ->all();
+        }
+        // Для всех остальных авторизованных пользователей показываем проекты их подразделения
+        elseif ($user->department_id) {
             $projectsQuery = \app\models\Project::find()
                 ->where(['department_id' => $user->department_id]);
             

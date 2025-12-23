@@ -1,11 +1,12 @@
 <?php
 
 use yii\helpers\Html;
-use yii\widgets\LinkPager;
+use yii\widgets\Pjax;
 use app\models\Department;
 
 /** @var yii\web\View $this */
-/** @var app\models\Department[] $departments */
+/** @var app\modules\admin\models\DepartmentSearch $searchModel */
+/** @var yii\data\ActiveDataProvider $dataProvider */
 
 $this->title = 'Подразделения';
 $this->params['breadcrumbs'][] = ['label' => 'Админка', 'url' => ['/admin']];
@@ -18,7 +19,10 @@ $this->params['breadcrumbs'][] = $this->title;
         <?= Html::a('Создать подразделение', ['create'], ['class' => 'btn btn-success']) ?>
     </div>
 
-    <?php if (empty($departments)): ?>
+    <?php Pjax::begin(); ?>
+    <?php echo $this->render('_search', ['model' => $searchModel]); ?>
+
+    <?php if ($dataProvider->getTotalCount() == 0): ?>
         <div class="alert alert-info">
             Подразделения не найдены.
         </div>
@@ -35,7 +39,7 @@ $this->params['breadcrumbs'][] = $this->title;
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($departments as $department): ?>
+                    <?php foreach ($dataProvider->getModels() as $department): ?>
                         <tr>
                             <td><?= Html::encode($department->name) ?></td>
                             <td><?= Html::encode($department->description) ?></td>
@@ -84,7 +88,15 @@ $this->params['breadcrumbs'][] = $this->title;
                 </tbody>
             </table>
         </div>
+        
+        <?php
+        echo \yii\widgets\LinkPager::widget([
+            'pagination' => $dataProvider->pagination,
+        ]);
+        ?>
     <?php endif; ?>
+
+    <?php Pjax::end(); ?>
 
 </div>
 

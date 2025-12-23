@@ -48,6 +48,7 @@ class CommentController extends Controller
         $user = Yii::$app->user->identity;
         
         // Ректор не может создавать комментарии
+        // Ректор не может комментировать
         if ($user->role === \app\models\User::ROLE_RECTOR) {
             Yii::$app->session->setFlash('error', 'Ректор может только просматривать комментарии.');
             return $this->goBack();

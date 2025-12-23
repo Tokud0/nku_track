@@ -21,28 +21,56 @@ $user = Yii::$app->user->identity;
 $canEdit = false;
 if ($user->role === User::ROLE_ADMIN) {
     $canEdit = true;
-} elseif ($user->role === User::ROLE_RECTOR) {
+} elseif ($user->role === User::ROLE_HEAD) {
     if ($model->department_id && $user->department_id &&
         (string)$model->department_id === (string)$user->department_id) {
         $canEdit = true;
     }
-} elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER])) {
+} elseif ($user->role === User::ROLE_RECTOR) {
+    // Ректор может только просматривать, не может редактировать
+    $canEdit = false;
+} elseif ($user->role === User::ROLE_TOP_MANAGER) {
+    // Топ-менеджер может редактировать проекты своего подразделения
     if ($model->department_id && $user->department_id &&
         (string)$model->department_id === (string)$user->department_id) {
         $canEdit = true;
     }
 }
+// Менеджер не может редактировать проекты, только задачи
 
 // Проверка прав на работу с ТЗ
-$canWorkWithSpec = $user->role === User::ROLE_ADMIN || 
-                  $user->role === User::ROLE_TOP_MANAGER ||
-                  ($user->role === User::ROLE_RECTOR && (string)$model->manager_id === (string)$user->_id);
+$canWorkWithSpec = false;
+if ($user->role === User::ROLE_ADMIN) {
+    $canWorkWithSpec = true;
+} elseif ($user->role === User::ROLE_TOP_MANAGER) {
+    // Топ-менеджер может работать с ТЗ проектов своего подразделения
+    if ($model->department_id && $user->department_id &&
+        (string)$model->department_id === (string)$user->department_id) {
+        $canWorkWithSpec = true;
+    }
+} elseif ($user->role === User::ROLE_HEAD) {
+    // Руководитель может работать с ТЗ всех проектов своего подразделения
+    if ($model->department_id && $user->department_id &&
+        (string)$model->department_id === (string)$user->department_id) {
+        $canWorkWithSpec = true;
+    }
+}
+// Ректор может только просматривать ТЗ
+if ($user->role === User::ROLE_RECTOR) {
+    $canWorkWithSpec = false;
+}
 
 // Проверка прав на создание задач
-$canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+$canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
 
-// Получение задач
-$tasks = Task::find()->where(['project_id' => $model->_id])->all();
+// Получение задач (исключаем архивные)
+$tasks = Task::find()
+    ->where(['project_id' => $model->_id])
+    ->andWhere(['$or' => [
+        ['is_archived' => false],
+        ['is_archived' => ['$exists' => false]],
+    ]])
+    ->all();
 $tasksCount = count($tasks);
 $tasksByStatus = [
     Task::STATUS_TODO => 0,
@@ -107,6 +135,8 @@ foreach ($tasks as $task) {
             </div>
 
             <!-- Progress & Deadline -->
+            <!-- Временно скрыто по запросу пользователя -->
+            <?php if (false): ?>
             <div class="row g-3">
                 <div class="col-md-8">
                     <label class="form-label fw-semibold mb-2">
@@ -154,6 +184,7 @@ foreach ($tasks as $task) {
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -179,14 +210,6 @@ foreach ($tasks as $task) {
                 <i class="fas fa-tasks me-2"></i>
                 Задачи
                 <span class="badge bg-primary ms-2"><?= $tasksCount ?></span>
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reports" 
-                    type="button" role="tab" aria-controls="reports" aria-selected="false">
-                <i class="fas fa-chart-bar me-2"></i>
-                Отчёты
-                <span class="badge bg-secondary ms-2">Soon</span>
             </button>
         </li>
     </ul>
@@ -454,10 +477,16 @@ foreach ($tasks as $task) {
                                 ['class' => 'nku-btn nku-btn--sm nku-btn--success']
                             ) ?>
                         <?php endif; ?>
+                        <?php 
+                        // Подсчитываем количество архивных задач
+                        $archivedTasksCount = Task::find()
+                            ->where(['project_id' => $model->_id, 'is_archived' => true])
+                            ->count();
+                        ?>
                         <?= Html::a(
-                            '<i class="fas fa-columns me-2"></i>Канбан-доска',
-                            ['kanban', 'id' => (string)$model->_id],
-                            ['class' => 'nku-btn nku-btn--sm nku-btn--primary']
+                            '<i class="fas fa-archive me-2"></i>Архив' . ($archivedTasksCount > 0 ? ' <span class="badge bg-light text-dark ms-1">' . $archivedTasksCount . '</span>' : ''),
+                            ['archive', 'id' => (string)$model->_id],
+                            ['class' => 'nku-btn nku-btn--sm nku-btn--secondary']
                         ) ?>
                     </div>
                 </div>
@@ -518,29 +547,6 @@ foreach ($tasks as $task) {
                             <?php endif; ?>
                         </div>
                     <?php endif; ?>
-                </div>
-            </div>
-        </div>
-
-        <!-- Reports Tab (Coming Soon) -->
-        <div class="tab-pane fade" id="reports" role="tabpanel" aria-labelledby="reports-tab">
-            <div class="nku-card">
-                <div class="nku-card__body">
-                    <div class="nku-empty">
-                        <div class="nku-empty__icon">
-                            <i class="fas fa-chart-bar"></i>
-                        </div>
-                        <div class="nku-empty__title">Отчёты — скоро</div>
-                        <div class="nku-empty__description">
-                            Функционал отчётов находится в разработке и будет доступен в ближайшее время
-                        </div>
-                        <div class="nku-empty__action">
-                            <span class="nku-badge nku-badge--lg nku-badge--warning">
-                                <i class="fas fa-clock me-2"></i>
-                                Coming Soon
-                            </span>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>

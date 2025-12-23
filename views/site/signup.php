@@ -51,18 +51,6 @@ $this->params['breadcrumbs'][] = $this->title;
                         'placeholder' => 'Повторите пароль'
                     ]) ?>
 
-                    <?php
-                    $departments = \app\models\Department::find()->all();
-                    $departmentList = [];
-                    foreach ($departments as $dept) {
-                        $departmentList[(string)$dept->_id] = $dept->name;
-                    }
-                    ?>
-                    <?= $form->field($model, 'department_id')->dropDownList(
-                        $departmentList,
-                        ['prompt' => 'Выберите подразделение']
-                    ) ?>
-
                     <div class="d-grid gap-2 mt-4">
                         <?= Html::submitButton(
                             '<i class="fas fa-user-plus me-2"></i>Зарегистрироваться', 

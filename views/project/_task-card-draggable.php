@@ -64,23 +64,36 @@ use app\models\User;
                 </div>
             <?php endif; ?>
             
-            <div class="progress mb-2" style="height: 5px;">
-                <div class="progress-bar" 
-                     role="progressbar" 
-                     style="width: <?= $task->progress ?>%"
-                     aria-valuenow="<?= $task->progress ?>" 
-                     aria-valuemin="0" 
-                     aria-valuemax="100">
+            <?php
+            $totalSubtasks = $task->getTotalSubtasksCount();
+            $hasProgress = $task->progress > 0 || $totalSubtasks > 0;
+            ?>
+            <?php if ($hasProgress): ?>
+                <div class="progress mb-2" style="height: 5px;">
+                    <div class="progress-bar" 
+                         role="progressbar" 
+                         style="width: <?= $task->progress ?>%"
+                         aria-valuenow="<?= $task->progress ?>" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">
+                    </div>
                 </div>
-            </div>
+            <?php endif; ?>
             
             <div class="d-flex justify-content-between align-items-center">
-                <small class="text-muted"><?= $task->progress ?>%</small>
+                <?php if ($totalSubtasks > 0): ?>
+                    <small class="text-muted">
+                        <strong><?= $task->getProgressFormat() ?></strong>
+                        <span class="ms-1">(<?= $task->progress ?>%)</span>
+                    </small>
+                <?php else: ?>
+                    <small class="text-muted"><?= $task->progress ?>%</small>
+                <?php endif; ?>
                 <div class="btn-group btn-group-sm" role="group">
                     <?= Html::a('Просмотр', ['task/view', 'id' => (string)$task->_id], ['class' => 'btn btn-sm btn-info']) ?>
                     <?php 
                     // Менеджер, топ-менеджер, ректор и админ могут редактировать задачи
-                    $canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+                    $canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
                     if ($canEditTask): ?>
                         <?= Html::a('Редактировать', ['task/update', 'id' => (string)$task->_id], ['class' => 'btn btn-sm btn-secondary']) ?>
                     <?php elseif ($user->role === User::ROLE_EXECUTOR && $task->isAssignedToUser($user)): ?>
