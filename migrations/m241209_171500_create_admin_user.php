@@ -30,7 +30,8 @@ class m241209_171500_create_admin_user extends Migration
         $admin->fio = 'Администратор системы';
         $admin->email = 'admin@example.com';
         $admin->role = User::ROLE_ADMIN;
-        $admin->department = 'Администрация';
+        $admin->department_id = null; // Администратор не прикреплен к подразделению
+        $admin->subdepartment_id = null;
         $admin->setPassword('admin123'); // Пароль по умолчанию - измените его после первого входа!
         
         if ($admin->save()) {
