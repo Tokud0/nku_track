@@ -16,7 +16,7 @@ class m241209_171500_create_admin_user extends Migration
     {
         // Проверяем, не существует ли уже администратор
         $adminExists = User::find()
-            ->where(['email' => 'admin@example.com'])
+            ->where(['email' => 'admin@admin.com'])
             ->orWhere(['role' => User::ROLE_ADMIN])
             ->exists();
 
