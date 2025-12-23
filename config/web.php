@@ -8,6 +8,7 @@ $dotenv->load();
 
 $config = [
     'id' => 'basic',
+    'name' => 'KU Track',
     'basePath' => dirname(__DIR__),
     'bootstrap' => ['log'],
     'aliases' => [

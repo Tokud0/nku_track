@@ -4,6 +4,7 @@ namespace app\modules\admin\controllers;
 
 use Yii;
 use app\models\Department;
+use app\modules\admin\models\DepartmentSearch;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
 use yii\filters\VerbFilter;
@@ -48,13 +49,12 @@ class DepartmentController extends Controller
      */
     public function actionIndex()
     {
-        $departments = Department::find()
-            ->where(['parent_id' => null])
-            ->orderBy(['name' => SORT_ASC])
-            ->all();
+        $searchModel = new DepartmentSearch();
+        $dataProvider = $searchModel->search(Yii::$app->request->queryParams);
 
         return $this->render('index', [
-            'departments' => $departments,
+            'searchModel' => $searchModel,
+            'dataProvider' => $dataProvider,
         ]);
     }
 
@@ -310,6 +310,7 @@ class DepartmentController extends Controller
         
         // Проверяем валидность роли (админа нельзя назначить через этот интерфейс)
         $validRoles = [
+            User::ROLE_HEAD,
             User::ROLE_RECTOR,
             User::ROLE_TOP_MANAGER,
             User::ROLE_MANAGER,

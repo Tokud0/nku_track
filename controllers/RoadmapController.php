@@ -34,7 +34,12 @@ class RoadmapController extends Controller
                         'roles' => ['@'],
                         'matchCallback' => function ($rule, $action) {
                             $user = Yii::$app->user->identity;
-                            return in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER]);
+                            // Ректор может просматривать все дорожные карты
+                            if ($user->role === User::ROLE_RECTOR) {
+                                return true;
+                            }
+                            // Руководитель и топ-менеджер могут управлять дорожными картами
+                            return in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER]);
                         },
                     ],
                 ],
@@ -85,6 +90,12 @@ class RoadmapController extends Controller
     {
         $user = Yii::$app->user->identity;
         
+        // Ректор может только просматривать, не может создавать
+        if ($user->role === User::ROLE_RECTOR) {
+            Yii::$app->session->setFlash('error', 'Ректор может только просматривать дорожные карты.');
+            return $this->redirect(['index']);
+        }
+        
         if (!$user->department_id) {
             Yii::$app->session->setFlash('error', 'Вы не привязаны к подразделению.');
             return $this->redirect(['/site/index']);
@@ -116,6 +127,14 @@ class RoadmapController extends Controller
      */
     public function actionUpdate($id)
     {
+        $user = Yii::$app->user->identity;
+        
+        // Ректор может только просматривать, не может редактировать
+        if ($user->role === User::ROLE_RECTOR) {
+            Yii::$app->session->setFlash('error', 'Ректор может только просматривать дорожные карты.');
+            return $this->redirect(['index']);
+        }
+        
         $roadmap = $this->findRoadmap($id);
         $this->checkAccess($roadmap);
 
@@ -146,6 +165,13 @@ class RoadmapController extends Controller
             return ['success' => false, 'message' => 'Не все обязательные поля заполнены.'];
         }
 
+        $user = Yii::$app->user->identity;
+        
+        // Ректор может только просматривать, не может редактировать
+        if ($user->role === User::ROLE_RECTOR) {
+            return ['success' => false, 'message' => 'Ректор может только просматривать дорожные карты.'];
+        }
+        
         $roadmap = Roadmap::findOne(['_id' => new \MongoDB\BSON\ObjectId($roadmapId)]);
         if (!$roadmap) {
             return ['success' => false, 'message' => 'Дорожная карта не найдена.'];
@@ -192,6 +218,13 @@ class RoadmapController extends Controller
      */
     public function actionDeleteStage($id)
     {
+        $user = Yii::$app->user->identity;
+        
+        // Ректор может только просматривать, не может удалять
+        if ($user->role === User::ROLE_RECTOR) {
+            return ['success' => false, 'message' => 'Ректор может только просматривать дорожные карты.'];
+        }
+        
         $stage = RoadmapStage::findOne(['_id' => new \MongoDB\BSON\ObjectId($id)]);
         if (!$stage) {
             throw new NotFoundHttpException('Этап не найден.');
@@ -269,6 +302,14 @@ class RoadmapController extends Controller
      */
     public function actionDeleteGoal($id)
     {
+        $user = Yii::$app->user->identity;
+        
+        // Ректор может только просматривать, не может удалять
+        if ($user->role === User::ROLE_RECTOR) {
+            Yii::$app->session->setFlash('error', 'Ректор может только просматривать дорожные карты.');
+            return $this->redirect(['index']);
+        }
+        
         $goal = RoadmapStageGoal::findOne(['_id' => new \MongoDB\BSON\ObjectId($id)]);
         if (!$goal) {
             throw new NotFoundHttpException('Цель не найдена.');
@@ -309,9 +350,25 @@ class RoadmapController extends Controller
     {
         $user = Yii::$app->user->identity;
         
-        if (!$user->department_id || (string)$roadmap->department_id !== (string)$user->department_id) {
-            throw new NotFoundHttpException('У вас нет доступа к этой дорожной карте.');
+        // Админ имеет полный доступ
+        if ($user->role === User::ROLE_ADMIN) {
+            return;
         }
+        
+        // Ректор может просматривать все дорожные карты (но не редактировать)
+        if ($user->role === User::ROLE_RECTOR) {
+            return;
+        }
+        
+        // Руководитель и топ-менеджер имеют доступ к дорожным картам своего подразделения
+        if (in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER])) {
+            if ($roadmap->department_id && $user->department_id && 
+                (string)$roadmap->department_id === (string)$user->department_id) {
+                return;
+            }
+        }
+        
+        throw new NotFoundHttpException('У вас нет доступа к этой дорожной карте.');
     }
 }
 

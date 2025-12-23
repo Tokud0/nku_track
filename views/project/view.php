@@ -1,7 +1,7 @@
 <?php
 
 use yii\helpers\Html;
-use yii\widgets\DetailView;
+use yii\helpers\Url;
 use app\models\Project;
 use app\models\ProjectSpec;
 use app\models\Task;
@@ -9,278 +9,541 @@ use app\models\User;
 
 /** @var yii\web\View $this */
 /** @var app\models\Project $model */
+/** @var app\models\ProjectSpec $spec */
 
 $this->title = $model->title;
 $this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['index']];
 $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
-// ТЗ передается из контроллера
+
+// Проверка прав на редактирование
+$canEdit = false;
+if ($user->role === User::ROLE_ADMIN) {
+    $canEdit = true;
+} elseif ($user->role === User::ROLE_HEAD) {
+    if ($model->department_id && $user->department_id &&
+        (string)$model->department_id === (string)$user->department_id) {
+        $canEdit = true;
+    }
+} elseif ($user->role === User::ROLE_RECTOR) {
+    // Ректор может только просматривать, не может редактировать
+    $canEdit = false;
+} elseif ($user->role === User::ROLE_TOP_MANAGER) {
+    // Топ-менеджер может редактировать проекты своего подразделения
+    if ($model->department_id && $user->department_id &&
+        (string)$model->department_id === (string)$user->department_id) {
+        $canEdit = true;
+    }
+}
+// Менеджер не может редактировать проекты, только задачи
+
+// Проверка прав на работу с ТЗ
+$canWorkWithSpec = false;
+if ($user->role === User::ROLE_ADMIN) {
+    $canWorkWithSpec = true;
+} elseif ($user->role === User::ROLE_TOP_MANAGER) {
+    // Топ-менеджер может работать с ТЗ проектов своего подразделения
+    if ($model->department_id && $user->department_id &&
+        (string)$model->department_id === (string)$user->department_id) {
+        $canWorkWithSpec = true;
+    }
+} elseif ($user->role === User::ROLE_HEAD) {
+    // Руководитель может работать с ТЗ всех проектов своего подразделения
+    if ($model->department_id && $user->department_id &&
+        (string)$model->department_id === (string)$user->department_id) {
+        $canWorkWithSpec = true;
+    }
+}
+// Ректор может только просматривать ТЗ
+if ($user->role === User::ROLE_RECTOR) {
+    $canWorkWithSpec = false;
+}
+
+// Проверка прав на создание задач
+$canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
+
+// Получение задач (исключаем архивные)
+$tasks = Task::find()
+    ->where(['project_id' => $model->_id])
+    ->andWhere(['$or' => [
+        ['is_archived' => false],
+        ['is_archived' => ['$exists' => false]],
+    ]])
+    ->all();
+$tasksCount = count($tasks);
+$tasksByStatus = [
+    Task::STATUS_TODO => 0,
+    Task::STATUS_IN_PROGRESS => 0,
+    Task::STATUS_REVIEW => 0,
+    Task::STATUS_DONE => 0,
+];
+foreach ($tasks as $task) {
+    if (isset($tasksByStatus[$task->status])) {
+        $tasksByStatus[$task->status]++;
+    }
+}
 ?>
+
 <div class="project-view">
-
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1><?= Html::encode($this->title) ?></h1>
-        <span class="badge badge-<?= [
-            Project::STATUS_DRAFT => 'secondary',
-            Project::STATUS_ACTIVE => 'success',
-            Project::STATUS_REVIEW => 'warning',
-            Project::STATUS_FINISHED => 'info',
-            Project::STATUS_FROZEN => 'danger',
-        ][$model->status] ?? 'secondary' ?> badge-lg">
-            <?= $model->getStatusLabel() ?>
-        </span>
-    </div>
-
-    <div class="mb-3">
-        <?php 
-        // Определяем, может ли пользователь редактировать проект
-        // Исполнитель НЕ может редактировать проекты
-        $canEditProject = false;
-        
-        // Админ может редактировать все проекты
-        if ($user->role === User::ROLE_ADMIN) {
-            $canEditProject = true;
-        }
-        // Ректор может редактировать проекты своего подразделения
-        elseif ($user->role === User::ROLE_RECTOR) {
-            if ($model->department_id && $user->department_id &&
-                (string)$model->department_id === (string)$user->department_id) {
-                $canEditProject = true;
-            }
-        }
-        // Топ-менеджер и менеджер могут редактировать проекты своего подразделения
-        elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER])) {
-            if ($model->department_id && $user->department_id &&
-                (string)$model->department_id === (string)$user->department_id) {
-                $canEditProject = true;
-            }
-        }
-        // Исполнитель и все остальные НЕ могут редактировать
-        
-        if ($canEditProject): ?>
-            <?= Html::a('Редактировать', ['update', 'id' => (string)$model->_id], ['class' => 'btn btn-primary']) ?>
-            <?= Html::a('Удалить', ['delete', 'id' => (string)$model->_id], [
-                'class' => 'btn btn-danger',
-                'data' => [
-                    'confirm' => 'Вы уверены, что хотите удалить этот проект?',
-                    'method' => 'post',
-                ],
-            ]) ?>
-        <?php endif; ?>
-        <?= Html::a('Назад к списку', ['index'], ['class' => 'btn btn-secondary']) ?>
-    </div>
-
-    <div class="row">
-        <!-- Основная информация о проекте -->
-        <div class="col-md-12">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h4 class="mb-0">Информация о проекте</h4>
+    <!-- Project Header -->
+    <div class="nku-card mb-4">
+        <div class="nku-card__body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div class="flex-grow-1">
+                    <div class="d-flex align-items-center gap-3 mb-2">
+                        <h1 class="mb-0"><?= Html::encode($this->title) ?></h1>
+                        <span class="nku-badge nku-badge--lg nku-badge--status-<?= $model->status ?>">
+                            <?= $model->getStatusLabel() ?>
+                        </span>
+                    </div>
+                    <p class="text-muted mb-0">
+                        <i class="fas fa-building me-2"></i>
+                        <?= $model->department ? Html::encode($model->department->name) : 'Без подразделения' ?>
+                        <span class="mx-2">•</span>
+                        <i class="fas fa-user-tie me-2"></i>
+                        <?= $model->manager ? Html::encode($model->manager->fio) : 'Без руководителя' ?>
+                    </p>
                 </div>
-                <div class="card-body">
-                    <?= DetailView::widget([
-                        'model' => $model,
-                        'options' => ['class' => 'table table-borderless'],
-                        'attributes' => [
-                            'title',
-                            [
-                                'attribute' => 'description',
-                                'format' => 'raw',
-                                'value' => nl2br(Html::encode($model->description)),
-                            ],
-                            [
-                                'attribute' => 'goals',
-                                'format' => 'raw',
-                                'value' => nl2br(Html::encode($model->goals)),
-                            ],
-                            [
-                                'attribute' => 'start_date',
-                                'value' => function($model) {
-                                    if ($model->start_date instanceof \MongoDB\BSON\UTCDateTime) {
-                                        return date('d.m.Y', $model->start_date->toDateTime()->getTimestamp());
-                                    }
-                                    return '-';
-                                },
-                            ],
-                            [
-                                'attribute' => 'end_date',
-                                'value' => function($model) {
-                                    if ($model->end_date instanceof \MongoDB\BSON\UTCDateTime) {
-                                        return date('d.m.Y', $model->end_date->toDateTime()->getTimestamp());
-                                    }
-                                    return '-';
-                                },
-                            ],
-                            [
-                                'attribute' => 'manager_id',
-                                'value' => $model->manager ? $model->manager->fio : '-',
-                            ],
-                            [
-                                'attribute' => 'department_id',
-                                'value' => $model->department ? $model->department->name : '-',
-                            ],
-                            [
-                                'attribute' => 'progress',
-                                'format' => 'raw',
-                                'value' => function($model) {
-                                    return '<div class="progress" style="height: 25px;">
-                                        <div class="progress-bar ' . ($model->progress >= 100 ? 'bg-success' : ($model->progress >= 50 ? 'bg-info' : 'bg-warning')) . '" 
-                                             role="progressbar" 
-                                             style="width: ' . $model->progress . '%"
-                                             aria-valuenow="' . $model->progress . '" 
-                                             aria-valuemin="0" 
-                                             aria-valuemax="100">
-                                            ' . $model->progress . '%
-                                        </div>
-                                    </div>';
-                                },
-                            ],
-                            [
-                                'attribute' => 'next_report_deadline',
-                                'value' => function($model) {
-                                    if ($model->next_report_deadline instanceof \MongoDB\BSON\UTCDateTime) {
-                                        $deadline = $model->next_report_deadline->toDateTime()->getTimestamp();
-                                        $now = time();
-                                        $daysLeft = floor(($deadline - $now) / (24 * 60 * 60));
-                                        
-                                        $class = $daysLeft < 0 ? 'text-danger' : ($daysLeft <= 3 ? 'text-warning' : 'text-success');
-                                        return '<span class="' . $class . '">' . date('d.m.Y H:i', $deadline) . ' (' . $daysLeft . ' дн.)</span>';
-                                    }
-                                    return '<span class="text-muted">Не установлен</span>';
-                                },
-                                'format' => 'raw',
-                            ],
-                            [
-                                'attribute' => 'created_at',
-                                'value' => function($model) {
-                                    if ($model->created_at instanceof \MongoDB\BSON\UTCDateTime) {
-                                        return date('d.m.Y H:i', $model->created_at->toDateTime()->getTimestamp());
-                                    }
-                                    return '-';
-                                },
-                            ],
-                        ],
-                    ]) ?>
+                <div class="text-end">
+                    <?= Html::a(
+                        '<i class="fas fa-arrow-left me-2"></i>Назад',
+                        ['index'],
+                        ['class' => 'nku-btn nku-btn--secondary mb-2']
+                    ) ?>
+                    <?php if ($canEdit): ?>
+                        <div class="d-flex gap-2">
+                            <?= Html::a(
+                                '<i class="fas fa-edit me-2"></i>Редактировать',
+                                ['update', 'id' => (string)$model->_id],
+                                ['class' => 'nku-btn nku-btn--primary']
+                            ) ?>
+                            <?= Html::a(
+                                '<i class="fas fa-trash me-2"></i>Удалить',
+                                ['delete', 'id' => (string)$model->_id],
+                                [
+                                    'class' => 'nku-btn nku-btn--danger',
+                                    'data' => [
+                                        'confirm' => 'Вы уверены, что хотите удалить этот проект?',
+                                        'method' => 'post',
+                                    ],
+                                ]
+                            ) ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
+
+            <!-- Progress & Deadline -->
+            <!-- Временно скрыто по запросу пользователя -->
+            <?php if (false): ?>
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label fw-semibold mb-2">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Прогресс проекта
+                    </label>
+                    <div class="nku-progress nku-progress--lg">
+                        <div class="nku-progress__bar nku-progress__bar--<?= $model->progress >= 100 ? 'success' : ($model->progress >= 50 ? 'primary' : 'warning') ?>" 
+                             style="width: <?= $model->progress ?>%">
+                            <span class="nku-progress__label"><?= $model->progress ?>%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold mb-2">
+                        <i class="fas fa-clock me-2"></i>
+                        Следующий отчёт
+                    </label>
+                    <div>
+                        <?php if ($model->next_report_deadline instanceof \MongoDB\BSON\UTCDateTime): ?>
+                            <?php 
+                            $deadline = $model->next_report_deadline->toDateTime()->getTimestamp();
+                            $now = time();
+                            $daysLeft = floor(($deadline - $now) / (24 * 60 * 60));
+                            $isOverdue = $daysLeft < 0;
+                            $isUrgent = $daysLeft <= 3 && !$isOverdue;
+                            ?>
+                            <div class="p-2 rounded <?= $isOverdue ? 'bg-danger bg-opacity-10' : ($isUrgent ? 'bg-warning bg-opacity-10' : 'bg-light') ?>">
+                                <div class="fw-bold <?= $isOverdue ? 'text-danger' : ($isUrgent ? 'text-warning' : 'text-success') ?>">
+                                    <?= date('d.m.Y H:i', $deadline) ?>
+                                </div>
+                                <small class="text-muted">
+                                    <?php if ($isOverdue): ?>
+                                        Просрочен на <?= abs($daysLeft) ?> дн.
+                                    <?php elseif ($isUrgent): ?>
+                                        Осталось <?= $daysLeft ?> дн.
+                                    <?php else: ?>
+                                        Осталось <?= $daysLeft ?> дн.
+                                    <?php endif; ?>
+                                </small>
+                            </div>
+                        <?php else: ?>
+                            <span class="nku-badge nku-badge--secondary">Не установлен</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 
-    <!-- Техническое задание -->
-    <div class="row">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0">Техническое задание</h4>
-                    <?php 
-                    // Топ-менеджер, ректор (создатель проекта) и админ могут работать с ТЗ
-                    $canWorkWithSpec = $user->role === User::ROLE_ADMIN || 
-                                      $user->role === User::ROLE_TOP_MANAGER ||
-                                      ($user->role === User::ROLE_RECTOR && (string)$model->manager_id === (string)$user->_id);
-                    if ($canWorkWithSpec): ?>
-                        <?php if ($spec): ?>
-                            <?php if ($model->status === Project::STATUS_DRAFT): ?>
-                                <?= Html::a('Редактировать ТЗ', ['project-spec/update', 'project_id' => (string)$model->_id], ['class' => 'btn btn-sm btn-primary']) ?>
+    <!-- Tabs Navigation -->
+    <ul class="nav nav-tabs nku-tabs mb-4" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" 
+                    type="button" role="tab" aria-controls="overview" aria-selected="true">
+                <i class="fas fa-info-circle me-2"></i>
+                Обзор
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="spec-tab" data-bs-toggle="tab" data-bs-target="#spec" 
+                    type="button" role="tab" aria-controls="spec" aria-selected="false">
+                <i class="fas fa-file-contract me-2"></i>
+                Техническое задание
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tasks-tab" data-bs-toggle="tab" data-bs-target="#tasks" 
+                    type="button" role="tab" aria-controls="tasks" aria-selected="false">
+                <i class="fas fa-tasks me-2"></i>
+                Задачи
+                <span class="badge bg-primary ms-2"><?= $tasksCount ?></span>
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tabs Content -->
+    <div class="tab-content">
+        <!-- Overview Tab -->
+        <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="nku-card mb-4">
+                        <div class="nku-card__header">
+                            <h5 class="mb-0">Описание проекта</h5>
+                        </div>
+                        <div class="nku-card__body">
+                            <?php if ($model->description): ?>
+                                <div class="project-description">
+                                    <?= nl2br(Html::encode($model->description)) ?>
+                                </div>
+                            <?php else: ?>
+                                <p class="text-muted mb-0">Описание не указано</p>
                             <?php endif; ?>
-                        <?php else: ?>
-                            <?= Html::a('Добавить ТЗ', ['project-spec/create', 'project_id' => (string)$model->_id], ['class' => 'btn btn-sm btn-success']) ?>
-                        <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <?php if ($model->goals): ?>
+                        <div class="nku-card">
+                            <div class="nku-card__header">
+                                <h5 class="mb-0">Цели проекта</h5>
+                            </div>
+                            <div class="nku-card__body">
+                                <div class="project-goals">
+                                    <?= nl2br(Html::encode($model->goals)) ?>
+                                </div>
+                            </div>
+                        </div>
                     <?php endif; ?>
                 </div>
-                <div class="card-body">
-                    <?php if ($spec): ?>
-                        <div class="spec-content">
-                            <div class="mb-3">
-                                <h5>Описание ТЗ</h5>
-                                <div class="p-3 bg-light rounded">
-                                    <?= nl2br(Html::encode($spec->tz_text)) ?>
-                                </div>
-                            </div>
 
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <h5>Период отчетности</h5>
-                                    <p><?= $spec->getReportPeriodLabel() ?></p>
-                                    <?php if ($spec->report_period === ProjectSpec::PERIOD_CUSTOM && $spec->custom_period_days): ?>
-                                        <p><small class="text-muted">Каждые <?= $spec->custom_period_days ?> дней</small></p>
+                <div class="col-md-4">
+                    <!-- Даты -->
+                    <div class="nku-card mb-4">
+                        <div class="nku-card__header">
+                            <h5 class="mb-0">Сроки</h5>
+                        </div>
+                        <div class="nku-card__body">
+                            <div class="mb-3">
+                                <label class="text-muted mb-1">Начало проекта</label>
+                                <div class="fw-semibold">
+                                    <?php if ($model->start_date instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                        <i class="far fa-calendar-alt me-2"></i>
+                                        <?= date('d.m.Y', $model->start_date->toDateTime()->getTimestamp()) ?>
+                                    <?php else: ?>
+                                        <span class="text-muted">Не указано</span>
                                     <?php endif; ?>
                                 </div>
-                                <div class="col-md-6">
-                                    <h5>Дата создания ТЗ</h5>
-                                    <p>
-                                        <?php if ($spec->created_at instanceof \MongoDB\BSON\UTCDateTime): ?>
-                                            <?= date('d.m.Y H:i', $spec->created_at->toDateTime()->getTimestamp()) ?>
-                                        <?php else: ?>
-                                            -
-                                        <?php endif; ?>
-                                    </p>
+                            </div>
+                            <div>
+                                <label class="text-muted mb-1">Окончание проекта</label>
+                                <div class="fw-semibold">
+                                    <?php if ($model->end_date instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                        <i class="far fa-calendar-check me-2"></i>
+                                        <?= date('d.m.Y', $model->end_date->toDateTime()->getTimestamp()) ?>
+                                    <?php else: ?>
+                                        <span class="text-muted">Не указано</span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
+                        </div>
+                    </div>
 
-                            <?php if (!empty($spec->milestones)): ?>
-                                <div class="mb-3">
-                                    <h5>Этапы проекта</h5>
-                                    <ul class="list-group">
-                                        <?php foreach ($spec->milestones as $milestone): ?>
-                                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                                <span>
-                                                    <?php if (isset($milestone['done']) && $milestone['done']): ?>
-                                                        <span class="badge badge-success mr-2">✓</span>
-                                                    <?php else: ?>
-                                                        <span class="badge badge-secondary mr-2">○</span>
-                                                    <?php endif; ?>
-                                                    <?= Html::encode($milestone['name'] ?? 'Без названия') ?>
-                                                </span>
-                                                <?php if (isset($milestone['deadline']) && $milestone['deadline']): ?>
-                                                    <small class="text-muted">До: <?= Html::encode($milestone['deadline']) ?></small>
-                                                <?php endif; ?>
-                                            </li>
-                                        <?php endforeach; ?>
-                                    </ul>
+                    <!-- Метаданные -->
+                    <div class="nku-card">
+                        <div class="nku-card__header">
+                            <h5 class="mb-0">Информация</h5>
+                        </div>
+                        <div class="nku-card__body">
+                            <div class="mb-2">
+                                <small class="text-muted">Создан</small>
+                                <div>
+                                    <?php if ($model->created_at instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                        <?= date('d.m.Y H:i', $model->created_at->toDateTime()->getTimestamp()) ?>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
                                 </div>
-                            <?php endif; ?>
-
-                            <?php if (!empty($spec->metrics)): ?>
-                                <div class="mb-3">
-                                    <h5>Метрики успеха</h5>
-                                    <ul class="list-group">
-                                        <?php foreach ($spec->metrics as $metric): ?>
-                                            <li class="list-group-item"><?= Html::encode($metric) ?></li>
-                                        <?php endforeach; ?>
-                                    </ul>
-                                </div>
-                            <?php endif; ?>
-
-                            <?php if (!empty($spec->report_template)): ?>
-                                <div class="mb-3">
-                                    <h5>Шаблон отчета</h5>
-                                    <div class="table-responsive">
-                                        <table class="table table-bordered">
-                                            <thead>
-                                                <tr>
-                                                    <th>Поле</th>
-                                                    <th>Описание</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php foreach ($spec->report_template as $key => $value): ?>
-                                                    <tr>
-                                                        <td><strong><?= Html::encode($key) ?></strong></td>
-                                                        <td><?= Html::encode($value) ?></td>
-                                                    </tr>
-                                                <?php endforeach; ?>
-                                            </tbody>
-                                        </table>
+                            </div>
+                            <?php if ($model->updated_at instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                <div>
+                                    <small class="text-muted">Обновлён</small>
+                                    <div>
+                                        <?= date('d.m.Y H:i', $model->updated_at->toDateTime()->getTimestamp()) ?>
                                     </div>
                                 </div>
                             <?php endif; ?>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spec Tab -->
+        <div class="tab-pane fade" id="spec" role="tabpanel" aria-labelledby="spec-tab">
+            <div class="nku-card">
+                <div class="nku-card__header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Техническое задание</h5>
+                    <?php if ($canWorkWithSpec): ?>
+                        <div>
+                            <?php if ($spec): ?>
+                                <?php if ($model->status === Project::STATUS_DRAFT): ?>
+                                    <?= Html::a(
+                                        '<i class="fas fa-edit me-2"></i>Редактировать ТЗ',
+                                        ['project-spec/update', 'project_id' => (string)$model->_id],
+                                        ['class' => 'nku-btn nku-btn--sm nku-btn--primary']
+                                    ) ?>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <?= Html::a(
+                                    '<i class="fas fa-plus me-2"></i>Создать ТЗ',
+                                    ['project-spec/create', 'project_id' => (string)$model->_id],
+                                    ['class' => 'nku-btn nku-btn--sm nku-btn--success']
+                                ) ?>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <div class="nku-card__body">
+                    <?php if ($spec): ?>
+                        <!-- Описание ТЗ -->
+                        <div class="mb-4">
+                            <h6 class="text-muted mb-2">Описание</h6>
+                            <div class="p-3 bg-light rounded">
+                                <?= nl2br(Html::encode($spec->tz_text)) ?>
+                            </div>
+                        </div>
+
+                        <!-- Период отчётности -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <h6 class="text-muted mb-2">Период отчётности</h6>
+                                <span class="nku-badge nku-badge--primary">
+                                    <?= $spec->getReportPeriodLabel() ?>
+                                </span>
+                                <?php if ($spec->report_period === ProjectSpec::PERIOD_CUSTOM && $spec->custom_period_days): ?>
+                                    <div class="mt-1">
+                                        <small class="text-muted">Каждые <?= $spec->custom_period_days ?> дней</small>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-muted mb-2">Дата создания ТЗ</h6>
+                                <div>
+                                    <?php if ($spec->created_at instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                        <i class="far fa-clock me-2"></i>
+                                        <?= date('d.m.Y H:i', $spec->created_at->toDateTime()->getTimestamp()) ?>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Этапы проекта -->
+                        <?php if (!empty($spec->milestones)): ?>
+                            <div class="mb-4">
+                                <h6 class="text-muted mb-3">Этапы проекта</h6>
+                                <div class="list-group">
+                                    <?php foreach ($spec->milestones as $milestone): ?>
+                                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div class="d-flex align-items-center">
+                                                <?php if (isset($milestone['done']) && $milestone['done']): ?>
+                                                    <i class="fas fa-check-circle text-success me-3" style="font-size: 1.25rem;"></i>
+                                                <?php else: ?>
+                                                    <i class="far fa-circle text-secondary me-3" style="font-size: 1.25rem;"></i>
+                                                <?php endif; ?>
+                                                <span><?= Html::encode($milestone['name'] ?? 'Без названия') ?></span>
+                                            </div>
+                                            <?php if (isset($milestone['deadline']) && $milestone['deadline']): ?>
+                                                <span class="nku-badge nku-badge--secondary">
+                                                    <i class="far fa-calendar me-1"></i>
+                                                    <?= Html::encode($milestone['deadline']) ?>
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Метрики успеха -->
+                        <?php if (!empty($spec->metrics)): ?>
+                            <div class="mb-4">
+                                <h6 class="text-muted mb-3">Метрики успеха</h6>
+                                <div class="row">
+                                    <?php foreach ($spec->metrics as $metric): ?>
+                                        <div class="col-md-6 mb-2">
+                                            <div class="d-flex align-items-start">
+                                                <i class="fas fa-chart-line text-primary me-2 mt-1"></i>
+                                                <span><?= Html::encode($metric) ?></span>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Шаблон отчёта -->
+                        <?php if (!empty($spec->report_template)): ?>
+                            <div>
+                                <h6 class="text-muted mb-3">Шаблон отчёта</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th width="30%">Поле</th>
+                                                <th>Описание</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($spec->report_template as $key => $value): ?>
+                                                <tr>
+                                                    <td class="fw-semibold"><?= Html::encode($key) ?></td>
+                                                    <td><?= Html::encode($value) ?></td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     <?php else: ?>
-                        <div class="text-center text-muted py-4">
-                            <p>Техническое задание еще не создано.</p>
-                            <?php if (($user->role === User::ROLE_MANAGER && (string)$model->manager_id === (string)$user->_id) || $user->role === User::ROLE_ADMIN): ?>
-                                <?= Html::a('Создать ТЗ', ['project-spec/create', 'project_id' => (string)$model->_id], ['class' => 'btn btn-success']) ?>
+                        <div class="nku-empty">
+                            <div class="nku-empty__icon">
+                                <i class="fas fa-file-contract"></i>
+                            </div>
+                            <div class="nku-empty__title">Техническое задание не создано</div>
+                            <div class="nku-empty__description">
+                                ТЗ определяет этапы, метрики и шаблоны отчётов для проекта
+                            </div>
+                            <?php if ($canWorkWithSpec): ?>
+                                <div class="nku-empty__action">
+                                    <?= Html::a(
+                                        '<i class="fas fa-plus me-2"></i>Создать ТЗ',
+                                        ['project-spec/create', 'project_id' => (string)$model->_id],
+                                        ['class' => 'nku-btn nku-btn--primary']
+                                    ) ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tasks Tab -->
+        <div class="tab-pane fade" id="tasks" role="tabpanel" aria-labelledby="tasks-tab">
+            <div class="nku-card">
+                <div class="nku-card__header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Задачи проекта</h5>
+                    <div class="d-flex gap-2">
+                        <?php if ($canCreateTask): ?>
+                            <?= Html::a(
+                                '<i class="fas fa-plus me-2"></i>Создать задачу',
+                                ['task/create', 'project_id' => (string)$model->_id],
+                                ['class' => 'nku-btn nku-btn--sm nku-btn--success']
+                            ) ?>
+                        <?php endif; ?>
+                        <?php 
+                        // Подсчитываем количество архивных задач
+                        $archivedTasksCount = Task::find()
+                            ->where(['project_id' => $model->_id, 'is_archived' => true])
+                            ->count();
+                        ?>
+                        <?= Html::a(
+                            '<i class="fas fa-archive me-2"></i>Архив' . ($archivedTasksCount > 0 ? ' <span class="badge bg-light text-dark ms-1">' . $archivedTasksCount . '</span>' : ''),
+                            ['archive', 'id' => (string)$model->_id],
+                            ['class' => 'nku-btn nku-btn--sm nku-btn--secondary']
+                        ) ?>
+                    </div>
+                </div>
+                <div class="nku-card__body">
+                    <?php if ($tasksCount > 0): ?>
+                        <!-- Статистика задач -->
+                        <div class="row mb-4">
+                            <div class="col-md-3 mb-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <div class="h3 mb-1"><?= $tasksByStatus[Task::STATUS_TODO] ?></div>
+                                    <small class="text-muted">К выполнению</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="text-center p-3 bg-primary bg-opacity-10 rounded">
+                                    <div class="h3 mb-1 text-primary"><?= $tasksByStatus[Task::STATUS_IN_PROGRESS] ?></div>
+                                    <small class="text-muted">В работе</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="text-center p-3 bg-warning bg-opacity-10 rounded">
+                                    <div class="h3 mb-1 text-warning"><?= $tasksByStatus[Task::STATUS_REVIEW] ?></div>
+                                    <small class="text-muted">На проверке</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <div class="text-center p-3 bg-success bg-opacity-10 rounded">
+                                    <div class="h3 mb-1 text-success"><?= $tasksByStatus[Task::STATUS_DONE] ?></div>
+                                    <small class="text-muted">Завершено</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-center">
+                            <?= Html::a(
+                                '<i class="fas fa-columns me-2"></i>Перейти к канбан-доске для управления задачами',
+                                ['kanban', 'id' => (string)$model->_id],
+                                ['class' => 'nku-btn nku-btn--lg nku-btn--primary']
+                            ) ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="nku-empty">
+                            <div class="nku-empty__icon">
+                                <i class="fas fa-tasks"></i>
+                            </div>
+                            <div class="nku-empty__title">Задачи не созданы</div>
+                            <div class="nku-empty__description">
+                                Создайте первую задачу для проекта
+                            </div>
+                            <?php if ($canCreateTask): ?>
+                                <div class="nku-empty__action">
+                                    <?= Html::a(
+                                        '<i class="fas fa-plus me-2"></i>Создать задачу',
+                                        ['task/create', 'project_id' => (string)$model->_id],
+                                        ['class' => 'nku-btn nku-btn--primary']
+                                    ) ?>
+                                </div>
                             <?php endif; ?>
                         </div>
                     <?php endif; ?>
@@ -288,61 +551,34 @@ $user = Yii::$app->user->identity;
             </div>
         </div>
     </div>
-
-    <!-- Ссылка на канбан-доску -->
-    <div class="row mt-4">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0">Задачи проекта</h4>
-                    <div>
-                        <?php 
-                        // Менеджер, топ-менеджер, ректор и админ могут создавать задачи
-                        $canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
-                        if ($canCreateTask): ?>
-                            <?= Html::a('Создать задачу', ['task/create', 'project_id' => (string)$model->_id], ['class' => 'btn btn-sm btn-success mr-2']) ?>
-                        <?php endif; ?>
-                        <?= Html::a('Канбан-доска', ['kanban', 'id' => (string)$model->_id], ['class' => 'btn btn-sm btn-primary']) ?>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <?php
-                    $tasks = Task::find()->where(['project_id' => $model->_id])->all();
-                    $tasksCount = count($tasks);
-                    ?>
-                    <p class="mb-0">
-                        Всего задач: <strong><?= $tasksCount ?></strong>
-                        <?php if ($tasksCount > 0): ?>
-                            | <?= Html::a('Перейти к канбан-доске', ['kanban', 'id' => (string)$model->_id], ['class' => 'btn btn-sm btn-outline-primary']) ?>
-                        <?php endif; ?>
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-
 </div>
 
 <style>
-.project-view .card {
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    border: 1px solid rgba(0, 0, 0, 0.125);
+.nku-tabs {
+    border-bottom: 2px solid var(--nku-color-border);
 }
 
-.project-view .card-header {
-    background-color: #f8f9fa;
-    border-bottom: 2px solid #dee2e6;
+.nku-tabs .nav-link {
+    border: none;
+    color: var(--nku-color-text-secondary);
+    padding: 1rem 1.5rem;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
 }
 
-.project-view .badge-lg {
-    font-size: 1rem;
-    padding: 0.5rem 1rem;
+.nku-tabs .nav-link:hover {
+    color: var(--nku-color-primary);
+    border-bottom-color: var(--nku-color-primary-light);
 }
 
-.project-view .spec-content h5 {
-    color: #495057;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid #e9ecef;
+.nku-tabs .nav-link.active {
+    color: var(--nku-color-primary);
+    border-bottom-color: var(--nku-color-primary);
+    background: transparent;
+}
+
+.project-description,
+.project-goals {
+    line-height: 1.7;
 }
 </style>

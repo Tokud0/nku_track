@@ -42,6 +42,7 @@ class DefaultController extends Controller
         // Статистика для dashboard
         $totalUsers = User::find()->count();
         $totalAdmins = User::find()->where(['role' => User::ROLE_ADMIN])->count();
+        $totalHeads = User::find()->where(['role' => User::ROLE_HEAD])->count();
         $totalRectors = User::find()->where(['role' => User::ROLE_RECTOR])->count();
         $totalTopManagers = User::find()->where(['role' => User::ROLE_TOP_MANAGER])->count();
         $totalManagers = User::find()->where(['role' => User::ROLE_MANAGER])->count();
@@ -50,6 +51,7 @@ class DefaultController extends Controller
         return $this->render('index', [
             'totalUsers' => $totalUsers,
             'totalAdmins' => $totalAdmins,
+            'totalHeads' => $totalHeads,
             'totalRectors' => $totalRectors,
             'totalTopManagers' => $totalTopManagers,
             'totalManagers' => $totalManagers,

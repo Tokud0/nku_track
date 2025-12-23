@@ -72,9 +72,19 @@ use app\models\User;
             </div>
             
             <div class="d-flex justify-content-between align-items-center">
-                <small class="text-muted"><?= $task->progress ?>%</small>
+                <?php
+                $totalSubtasks = $task->getTotalSubtasksCount();
+                if ($totalSubtasks > 0):
+                ?>
+                    <small class="text-muted">
+                        <strong><?= $task->getProgressFormat() ?></strong>
+                        <span class="ms-1">(<?= $task->progress ?>%)</span>
+                    </small>
+                <?php else: ?>
+                    <small class="text-muted"><?= $task->progress ?>%</small>
+                <?php endif; ?>
                 <div class="btn-group btn-group-sm" role="group">
-                    <?php if ($user->role !== User::ROLE_RECTOR): ?>
+                    <?php if ($user->role !== User::ROLE_RECTOR): // Ректор может только просматривать ?>
                         <?php if ($user->role === User::ROLE_EXECUTOR && $task->isAssignedToUser($user)): ?>
                             <!-- Исполнитель может менять статус -->
                             <?php if ($task->status !== Task::STATUS_IN_PROGRESS): ?>
@@ -89,7 +99,7 @@ use app\models\User;
                                     'data-status' => Task::STATUS_REVIEW,
                                 ]) ?>
                             <?php endif; ?>
-                        <?php elseif (in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR])): ?>
+                        <?php elseif (in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD])): ?>
                             <!-- Менеджер, топ-менеджер и ректор могут отправить на доработку -->
                             <?php if ($task->status === Task::STATUS_REVIEW): ?>
                                 <?= Html::a('На доработку', ['task/change-status', 'id' => (string)$task->_id, 'status' => Task::STATUS_IN_PROGRESS], [
@@ -101,7 +111,7 @@ use app\models\User;
                         
                         <?php 
                         // Менеджер, топ-менеджер, ректор и админ могут редактировать задачи
-                        $canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+                        $canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
                         if ($canEditTask): ?>
                             <?= Html::a('Редактировать', ['task/update', 'id' => (string)$task->_id], ['class' => 'btn btn-sm btn-info']) ?>
                         <?php endif; ?>

@@ -20,7 +20,7 @@ $user = Yii::$app->user->identity;
 // Исполнитель может редактировать только свои задачи
 $isExecutor = $user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user);
 // Менеджер, топ-менеджер, ректор и админ имеют полный доступ к редактированию
-$canEditAll = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN]);
+$canEditAll = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
 
 // Определяем текущий тип назначения
 $currentExecutorType = 'none';
@@ -211,6 +211,40 @@ $department = $project->department;
 
             <?php
             $this->registerJs("
+            // Управление подзадачами
+            var subtaskIndex = " . (count($subtasks) + 1) . ";
+            
+            $('#add-subtask').on('click', function() {
+                var subtaskHtml = '<div class=\"subtask-item mb-2\">' +
+                    '<div class=\"input-group\">' +
+                    '<input type=\"text\" name=\"subtasks[]\" class=\"form-control\" placeholder=\"Например: ' + subtaskIndex + '. Следующий этап\">' +
+                    '<input type=\"hidden\" name=\"subtask_completed[]\" value=\"0\">' +
+                    '<button type=\"button\" class=\"btn btn-danger remove-subtask\">' +
+                    '<i class=\"fas fa-times\"></i>' +
+                    '</button>' +
+                    '</div>' +
+                    '</div>';
+                $('#subtasks-container').append(subtaskHtml);
+                subtaskIndex++;
+                updateRemoveButtons();
+            });
+            
+            $(document).on('click', '.remove-subtask', function() {
+                $(this).closest('.subtask-item').remove();
+                updateRemoveButtons();
+            });
+            
+            function updateRemoveButtons() {
+                var items = $('#subtasks-container .subtask-item');
+                if (items.length > 1) {
+                    items.find('.remove-subtask').show();
+                } else {
+                    items.find('.remove-subtask').hide();
+                }
+            }
+            
+            updateRemoveButtons();
+            
             var usersBySubdepartment = {$usersBySubdepartmentJson};
             var currentSubdepartmentId = '{$selectedSubdepartmentForUser}';
             
@@ -296,7 +330,48 @@ $department = $project->department;
             </div>
         </div>
 
-        <?= $form->field($model, 'progress')->textInput(['type' => 'number', 'min' => 0, 'max' => 100]) ?>
+        <h4>Подзадачи (To-Do лист)</h4>
+        <div class="alert alert-info">
+            <small>Добавьте этапы выполнения задачи. Прогресс будет рассчитываться автоматически на основе выполненных подзадач.</small>
+        </div>
+        <div id="subtasks-container">
+            <?php
+            $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
+            if (empty($subtasks)) {
+                // Если подзадач нет, показываем одно пустое поле
+                echo '<div class="subtask-item mb-2">';
+                echo '<div class="input-group">';
+                echo '<input type="text" name="subtasks[]" class="form-control" placeholder="Например: 1. Первый этап">';
+                echo '<input type="hidden" name="subtask_completed[]" value="0">';
+                echo '<button type="button" class="btn btn-danger remove-subtask" style="display: none;">';
+                echo '<i class="fas fa-times"></i>';
+                echo '</button>';
+                echo '</div>';
+                echo '</div>';
+            } else {
+                foreach ($subtasks as $index => $subtask) {
+                    $text = isset($subtask['text']) ? htmlspecialchars($subtask['text']) : '';
+                    $completed = isset($subtask['completed']) && $subtask['completed'] ? '1' : '0';
+                    echo '<div class="subtask-item mb-2">';
+                    echo '<div class="input-group">';
+                    echo '<input type="text" name="subtasks[]" class="form-control" value="' . $text . '" placeholder="Текст подзадачи">';
+                    echo '<input type="hidden" name="subtask_completed[]" value="' . $completed . '">';
+                    echo '<button type="button" class="btn btn-danger remove-subtask">';
+                    echo '<i class="fas fa-times"></i>';
+                    echo '</button>';
+                    echo '</div>';
+                    echo '</div>';
+                }
+            }
+            ?>
+        </div>
+        <button type="button" class="btn btn-success btn-sm mt-2" id="add-subtask">
+            <i class="fas fa-plus me-1"></i>Добавить подзадачу
+        </button>
+
+        <div class="form-group mt-3" style="display: none;">
+            <?= $form->field($model, 'progress')->hiddenInput()->label(false) ?>
+        </div>
 
         <div class="form-group">
             <?= Html::submitButton('Сохранить', ['class' => 'btn btn-primary']) ?>

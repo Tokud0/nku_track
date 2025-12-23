@@ -61,14 +61,16 @@ $this->params['breadcrumbs'][] = $this->title;
                                     <div>
                                         <span class="badge badge-<?= [
                                             User::ROLE_ADMIN => 'danger',
-                                            User::ROLE_RECTOR => 'warning',
+                                            User::ROLE_HEAD => 'warning',
+                                            User::ROLE_RECTOR => 'info',
                                             User::ROLE_TOP_MANAGER => 'primary',
                                             User::ROLE_MANAGER => 'info',
                                             User::ROLE_EXECUTOR => 'secondary',
                                         ][$user->role] ?? 'secondary' ?>" id="role_badge_<?= (string)$user->_id ?>">
                                             <?= [
                                                 User::ROLE_ADMIN => 'Админ',
-                                                User::ROLE_RECTOR => 'Руководитель',
+                                                User::ROLE_HEAD => 'Руководитель',
+                                                User::ROLE_RECTOR => 'Ректор',
                                                 User::ROLE_TOP_MANAGER => 'Топ-менеджер',
                                                 User::ROLE_MANAGER => 'Менеджер',
                                                 User::ROLE_EXECUTOR => 'Исполнитель',
@@ -87,8 +89,11 @@ $this->params['breadcrumbs'][] = $this->title;
                                                     Администратор (нельзя изменить)
                                                 </option>
                                             <?php endif; ?>
-                                            <option value="<?= User::ROLE_RECTOR ?>" <?= $user->role === User::ROLE_RECTOR ? 'selected' : '' ?>>
+                                            <option value="<?= User::ROLE_HEAD ?>" <?= $user->role === User::ROLE_HEAD ? 'selected' : '' ?>>
                                                 Руководитель
+                                            </option>
+                                            <option value="<?= User::ROLE_RECTOR ?>" <?= $user->role === User::ROLE_RECTOR ? 'selected' : '' ?>>
+                                                Ректор
                                             </option>
                                             <option value="<?= User::ROLE_TOP_MANAGER ?>" <?= $user->role === User::ROLE_TOP_MANAGER ? 'selected' : '' ?>>
                                                 Топ-менеджер
@@ -219,14 +224,16 @@ $(document).on('change', '.user-role-select', function() {
                 // Обновляем badge
                 var roleLabels = {
                     '" . User::ROLE_ADMIN . "': 'Админ',
-                    '" . User::ROLE_RECTOR . "': 'Руководитель',
+                    '" . User::ROLE_HEAD . "': 'Руководитель',
+                    '" . User::ROLE_RECTOR . "': 'Ректор',
                     '" . User::ROLE_TOP_MANAGER . "': 'Топ-менеджер',
                     '" . User::ROLE_MANAGER . "': 'Менеджер',
                     '" . User::ROLE_EXECUTOR . "': 'Исполнитель'
                 };
                 var roleColors = {
                     '" . User::ROLE_ADMIN . "': 'danger',
-                    '" . User::ROLE_RECTOR . "': 'warning',
+                    '" . User::ROLE_HEAD . "': 'warning',
+                    '" . User::ROLE_RECTOR . "': 'info',
                     '" . User::ROLE_TOP_MANAGER . "': 'primary',
                     '" . User::ROLE_MANAGER . "': 'info',
                     '" . User::ROLE_EXECUTOR . "': 'secondary'

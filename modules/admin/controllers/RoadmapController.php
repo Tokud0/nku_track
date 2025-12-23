@@ -8,6 +8,7 @@ use app\models\RoadmapStage;
 use app\models\RoadmapStageGoal;
 use app\models\Department;
 use app\models\User;
+use app\modules\admin\models\RoadmapSearch;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
 use yii\filters\VerbFilter;
@@ -54,20 +55,19 @@ class RoadmapController extends Controller
      */
     public function actionIndex()
     {
-        $departments = Department::find()
-            ->where(['parent_id' => null]) // Только основные подразделения
-            ->orderBy(['name' => SORT_ASC])
-            ->all();
+        $searchModel = new RoadmapSearch();
+        $dataProvider = $searchModel->search(Yii::$app->request->queryParams);
 
         // Получаем дорожные карты для каждого подразделения
         $roadmaps = [];
-        foreach ($departments as $department) {
+        foreach ($dataProvider->getModels() as $department) {
             $roadmap = Roadmap::findOne(['department_id' => $department->_id]);
             $roadmaps[(string)$department->_id] = $roadmap;
         }
 
         return $this->render('index', [
-            'departments' => $departments,
+            'searchModel' => $searchModel,
+            'dataProvider' => $dataProvider,
             'roadmaps' => $roadmaps,
         ]);
     }

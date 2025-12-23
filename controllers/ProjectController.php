@@ -6,6 +6,7 @@ use Yii;
 use app\models\Project;
 use app\models\ProjectSearch;
 use app\models\ProjectSpec;
+use app\models\Task;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
 use yii\filters\VerbFilter;
@@ -56,27 +57,47 @@ class ProjectController extends Controller
         
         $departmentId = null;
         
-        if ($user->role === User::ROLE_MANAGER || $user->role === User::ROLE_RECTOR || $user->role === User::ROLE_ADMIN) {
-            // Ректор и админ видят все проекты
-            if ($user->role === User::ROLE_RECTOR || $user->role === User::ROLE_ADMIN) {
+        // Ректор видит все проекты (только просмотр)
+        if ($user->role === User::ROLE_RECTOR) {
+            $managerId = null;
+            $departmentId = null;
+        } elseif ($user->role === User::ROLE_MANAGER || $user->role === User::ROLE_HEAD || $user->role === User::ROLE_TOP_MANAGER || $user->role === User::ROLE_ADMIN) {
+            // Руководитель, топ-менеджер и админ видят все проекты
+            if ($user->role === User::ROLE_HEAD || $user->role === User::ROLE_ADMIN) {
                 $managerId = null;
             } else {
-                // Менеджер видит проекты своего подразделения
+                // Менеджер и топ-менеджер видят проекты своего подразделения
                 if ($user->department_id) {
                     $departmentId = $user->department_id;
                 }
             }
         } elseif ($user->role === User::ROLE_EXECUTOR) {
             // Исполнитель видит только проекты своего подразделения
+            // Если у исполнителя нет подразделения, он не видит проекты
             if ($user->department_id) {
                 $departmentId = $user->department_id;
+            } else {
+                // Исполнитель без подразделения не видит проекты
+                // Устанавливаем несуществующий ID, чтобы получить пустой результат
+                $departmentId = new \MongoDB\BSON\ObjectId('000000000000000000000000');
             }
         }
         
-        // Если в запросе указано подразделение, используем его
-        if (isset(Yii::$app->request->queryParams['ProjectSearch']['department_id']) && 
+        // Если в запросе указано подразделение, используем его (но не для ректора - ректор видит все)
+        if ($user->role !== User::ROLE_RECTOR && 
+            isset(Yii::$app->request->queryParams['ProjectSearch']['department_id']) && 
             !empty(Yii::$app->request->queryParams['ProjectSearch']['department_id'])) {
             $departmentId = Yii::$app->request->queryParams['ProjectSearch']['department_id'];
+        }
+        
+        // Для ректора всегда показываем все проекты (departmentId = null)
+        // Также очищаем параметр department_id из queryParams для ректора, чтобы фильтр из формы не применялся
+        if ($user->role === User::ROLE_RECTOR) {
+            $departmentId = null;
+            // Удаляем фильтр по подразделению из параметров запроса для ректора
+            if (isset(Yii::$app->request->queryParams['ProjectSearch']['department_id'])) {
+                unset(Yii::$app->request->queryParams['ProjectSearch']['department_id']);
+            }
         }
         
         $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $managerId, null, $departmentId);
@@ -118,9 +139,9 @@ class ProjectController extends Controller
     {
         $user = Yii::$app->user->identity;
         
-        // Ректор и админ могут создавать проект
-        if ($user->role !== User::ROLE_RECTOR && $user->role !== User::ROLE_ADMIN) {
-            Yii::$app->session->setFlash('error', 'Только руководитель может создавать проекты.');
+        // Руководитель, топ-менеджер и админ могут создавать проект
+        if (!in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_ADMIN])) {
+            Yii::$app->session->setFlash('error', 'У вас нет прав для создания проектов.');
             return $this->redirect(['index']);
         }
         
@@ -140,8 +161,8 @@ class ProjectController extends Controller
             // Конвертируем department_id в ObjectId если это строка
             if (!empty($_POST['Project']['department_id'])) {
                 $model->department_id = new \MongoDB\BSON\ObjectId($_POST['Project']['department_id']);
-            } elseif ($user->role === User::ROLE_RECTOR && $model->isNewRecord) {
-                // Для ректора при создании используем его подразделение
+            } elseif (in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER]) && $model->isNewRecord) {
+                // Для руководителя и топ-менеджера при создании используем его подразделение
                 if ($user->department_id) {
                     $model->department_id = $user->department_id;
                 }
@@ -170,22 +191,29 @@ class ProjectController extends Controller
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
         
+        // Ректор может только просматривать, не может редактировать
+        if ($user->role === User::ROLE_RECTOR) {
+            Yii::$app->session->setFlash('error', 'Ректор может только просматривать проекты.');
+            return $this->redirect(['view', 'id' => $id]);
+        }
+        
         // Админ может редактировать все проекты
         if ($user->role === User::ROLE_ADMIN) {
             // Разрешаем редактирование
         }
-        // Ректор может редактировать все проекты своего подразделения
-        elseif ($user->role === User::ROLE_RECTOR && 
+        // Руководитель может редактировать все проекты своего подразделения
+        elseif ($user->role === User::ROLE_HEAD && 
                 $model->department_id && $user->department_id &&
                 (string)$model->department_id === (string)$user->department_id) {
             // Разрешаем редактирование
         }
-        // Топ-менеджер и менеджер могут редактировать проекты своего подразделения
-        elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) &&
+        // Топ-менеджер может редактировать проекты своего подразделения
+        elseif ($user->role === User::ROLE_TOP_MANAGER && 
                 $model->department_id && $user->department_id &&
                 (string)$model->department_id === (string)$user->department_id) {
             // Разрешаем редактирование
         }
+        // Менеджер не может редактировать проекты, только задачи
         else {
             Yii::$app->session->setFlash('error', 'Вы не можете редактировать этот проект.');
             return $this->redirect(['view', 'id' => $id]);
@@ -271,6 +299,51 @@ class ProjectController extends Controller
     }
 
     /**
+     * Показывает архив задач проекта
+     * @param string $id
+     * @return mixed
+     * @throws NotFoundHttpException if the model cannot be found
+     */
+    public function actionArchive($id)
+    {
+        $model = $this->findModel($id);
+        $user = Yii::$app->user->identity;
+        
+        // Проверка доступа к проекту
+        $this->checkAccess($model);
+        
+        // Получаем все архивные задачи проекта
+        $tasksQuery = Task::find()
+            ->where(['project_id' => $model->_id, 'is_archived' => true])
+            ->orderBy(['created_at' => SORT_DESC]);
+        
+        // Фильтруем задачи по видимости для исполнителя
+        if ($user->role === User::ROLE_EXECUTOR) {
+            $allTasks = Task::find()
+                ->where(['project_id' => $model->_id, 'is_archived' => true])
+                ->all();
+            $visibleTaskIds = [];
+            foreach ($allTasks as $task) {
+                if ($task->isAssignedToUser($user)) {
+                    $visibleTaskIds[] = $task->_id;
+                }
+            }
+            if (!empty($visibleTaskIds)) {
+                $tasksQuery->andWhere(['_id' => ['$in' => $visibleTaskIds]]);
+            } else {
+                $tasksQuery->andWhere(['_id' => ['$in' => []]]); // Пустой результат
+            }
+        }
+        
+        $tasks = $tasksQuery->all();
+        
+        return $this->render('archive', [
+            'model' => $model,
+            'tasks' => $tasks,
+        ]);
+    }
+
+    /**
      * Finds the Project model based on its primary key value.
      * If the model is not found, a 404 HTTP exception will be thrown.
      * @param string $id
@@ -300,16 +373,29 @@ class ProjectController extends Controller
             return;
         }
         
-        // Ректор имеет доступ к проектам своего подразделения
+        // Ректор имеет доступ ко всем проектам (только просмотр)
         if ($user->role === User::ROLE_RECTOR) {
+            return;
+        }
+        
+        // Руководитель имеет доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_HEAD) {
             if ($model->department_id && $user->department_id && 
                 (string)$model->department_id === (string)$user->department_id) {
                 return;
             }
         }
         
-        // Топ-менеджер и менеджер имеют доступ к проектам своего подразделения
-        if ($user->role === User::ROLE_TOP_MANAGER || $user->role === User::ROLE_MANAGER) {
+        // Топ-менеджер имеет доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_TOP_MANAGER) {
+            if ($model->department_id && $user->department_id && 
+                (string)$model->department_id === (string)$user->department_id) {
+                return;
+            }
+        }
+        
+        // Менеджер имеет доступ к проектам своего подразделения
+        if ($user->role === User::ROLE_MANAGER) {
             if ($model->department_id && $user->department_id && 
                 (string)$model->department_id === (string)$user->department_id) {
                 return;

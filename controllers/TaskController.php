@@ -36,6 +36,7 @@ class TaskController extends Controller
                 'actions' => [
                     'delete' => ['POST'],
                     'change-status' => ['POST'],
+                    'toggle-subtask' => ['POST'],
                 ],
             ],
         ];
@@ -56,8 +57,8 @@ class TaskController extends Controller
 
         $user = Yii::$app->user->identity;
         
-        // Менеджер, топ-менеджер, ректор и админ могут создавать задачи
-        if (!in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_RECTOR, User::ROLE_ADMIN])) {
+        // Руководитель, топ-менеджер, менеджер и админ могут создавать задачи
+        if (!in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER, User::ROLE_ADMIN])) {
             Yii::$app->session->setFlash('error', 'У вас нет прав для создания задач.');
             return $this->redirect(['project/view', 'id' => $project_id]);
         }
@@ -87,6 +88,23 @@ class TaskController extends Controller
             // так как они могут быть перезаписаны из POST данных
             $model->project_id = $projectIdObj;
             $model->creator_id = $user->_id;
+            
+            // Обрабатываем подзадачи
+            if (isset($_POST['subtasks']) && is_array($_POST['subtasks'])) {
+                $subtasks = [];
+                foreach ($_POST['subtasks'] as $subtaskText) {
+                    $subtaskText = trim($subtaskText);
+                    if (!empty($subtaskText)) {
+                        $subtasks[] = [
+                            'text' => $subtaskText,
+                            'completed' => false
+                        ];
+                    }
+                }
+                $model->subtasks = $subtasks;
+            } else {
+                $model->subtasks = [];
+            }
             
             // Конвертируем даты из строк в UTCDateTime
             if (!empty($_POST['Task']['start_date'])) {
@@ -159,6 +177,31 @@ class TaskController extends Controller
         $this->checkAccess($model, $user);
 
         if ($model->load(Yii::$app->request->post())) {
+            // Обрабатываем подзадачи
+            if (isset($_POST['subtasks']) && is_array($_POST['subtasks'])) {
+                $subtasks = [];
+                $completedFlags = isset($_POST['subtask_completed']) && is_array($_POST['subtask_completed']) 
+                    ? $_POST['subtask_completed'] 
+                    : [];
+                
+                foreach ($_POST['subtasks'] as $index => $subtaskText) {
+                    $subtaskText = trim($subtaskText);
+                    if (!empty($subtaskText)) {
+                        $completed = isset($completedFlags[$index]) && $completedFlags[$index] == '1';
+                        $subtasks[] = [
+                            'text' => $subtaskText,
+                            'completed' => $completed
+                        ];
+                    }
+                }
+                $model->subtasks = $subtasks;
+            } else {
+                // Если подзадач нет в POST, но они были в модели, сохраняем их
+                if (empty($model->subtasks)) {
+                    $model->subtasks = [];
+                }
+            }
+            
             // Конвертируем даты из строк в UTCDateTime
             if (!empty($_POST['Task']['start_date'])) {
                 $model->start_date = new \MongoDB\BSON\UTCDateTime(strtotime($_POST['Task']['start_date']) * 1000);
@@ -231,8 +274,8 @@ class TaskController extends Controller
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
         
-        // Ректор, топ-менеджер, менеджер и админ могут удалять задачи
-        if (!in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER, User::ROLE_ADMIN])) {
+        // Руководитель, топ-менеджер, менеджер и админ могут удалять задачи
+        if (!in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER, User::ROLE_ADMIN])) {
             Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи.');
             return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
         }
@@ -266,9 +309,8 @@ class TaskController extends Controller
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
         
-        // Проверка прав
+        // Проверка прав - Ректор может только просматривать
         if ($user->role === User::ROLE_RECTOR) {
-            // Ректор только просматривает
             return ['success' => false, 'message' => 'Ректор может только просматривать задачи.'];
         }
         
@@ -292,8 +334,8 @@ class TaskController extends Controller
             }
         }
         
-        // Ректор, топ-менеджер и менеджер могут отправить на доработку (из review в todo или in_progress)
-        if (in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) && 
+        // Руководитель, топ-менеджер и менеджер могут отправить на доработку (из review в todo или in_progress)
+        if (in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) && 
             $model->status === Task::STATUS_REVIEW) {
             if ($status !== Task::STATUS_TODO && $status !== Task::STATUS_IN_PROGRESS) {
                 return ['success' => false, 'message' => 'Вы можете отправить задачу на доработку (todo или in_progress).'];
@@ -340,6 +382,167 @@ class TaskController extends Controller
     }
 
     /**
+     * Переключает статус подзадачи (AJAX)
+     * @return mixed
+     */
+    public function actionToggleSubtask()
+    {
+        Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
+        
+        try {
+            $taskId = Yii::$app->request->post('task_id');
+            $subtaskIndex = Yii::$app->request->post('subtask_index');
+            $completed = Yii::$app->request->post('completed') == '1';
+            
+            if (!$taskId) {
+                return ['success' => false, 'message' => 'Не указан ID задачи.'];
+            }
+            
+            if ($subtaskIndex === null || $subtaskIndex === '') {
+                return ['success' => false, 'message' => 'Не указан индекс подзадачи.'];
+            }
+            
+            $subtaskIndex = (int)$subtaskIndex;
+            
+            $model = $this->findModel($taskId);
+            $user = Yii::$app->user->identity;
+            
+            if (!$user) {
+                return ['success' => false, 'message' => 'Пользователь не авторизован.'];
+            }
+            
+            // Проверка прав доступа
+            try {
+                $this->checkViewAccess($model, $user);
+            } catch (\Exception $e) {
+                return ['success' => false, 'message' => $e->getMessage()];
+            }
+            
+            // Проверяем, что пользователь может редактировать задачу
+            if ($user->role === User::ROLE_RECTOR) {
+                return ['success' => false, 'message' => 'Ректор может только просматривать задачи.'];
+            }
+            
+            // Исполнитель может изменять подзадачи только своих задач
+            if ($user->role === User::ROLE_EXECUTOR && !$model->isAssignedToUser($user)) {
+                return ['success' => false, 'message' => 'Вы можете изменять подзадачи только своих задач.'];
+            }
+            
+            // Обновляем статус подзадачи
+            if (!is_array($model->subtasks)) {
+                $model->subtasks = [];
+            }
+            
+            if (!isset($model->subtasks[$subtaskIndex])) {
+                return ['success' => false, 'message' => 'Подзадача с индексом ' . $subtaskIndex . ' не найдена. Всего подзадач: ' . count($model->subtasks)];
+            }
+            
+            // Обновляем статус подзадачи в массиве
+            $subtasks = $model->subtasks;
+            $subtasks[$subtaskIndex]['completed'] = (bool)$completed;
+            
+            // Используем прямое обновление через коллекцию MongoDB для надежного сохранения вложенных массивов
+            $collection = \Yii::$app->mongodb->getCollection('tasks');
+            $updateResult = $collection->update(
+                ['_id' => $model->_id],
+                [
+                    '$set' => [
+                        'subtasks' => $subtasks,
+                        'updated_at' => new \MongoDB\BSON\UTCDateTime()
+                    ]
+                ]
+            );
+            
+            if ($updateResult) {
+                // Перезагружаем модель из БД
+                $model->refresh();
+                
+                // Пересчитываем прогресс
+                $total = $model->getTotalSubtasksCount();
+                if ($total > 0) {
+                    $newProgress = $model->calculateProgress();
+                    // Обновляем прогресс тоже через прямое обновление
+                    $collection->update(
+                        ['_id' => $model->_id],
+                        ['$set' => ['progress' => $newProgress]]
+                    );
+                    $model->refresh();
+                }
+                
+                return [
+                    'success' => true, 
+                    'message' => 'Статус подзадачи изменен.',
+                    'progress' => $model->progress,
+                    'progress_format' => $model->getProgressFormat()
+                ];
+            } else {
+                return ['success' => false, 'message' => 'Ошибка при обновлении в базе данных.'];
+            }
+        } catch (\Exception $e) {
+            Yii::error('Ошибка в actionToggleSubtask: ' . $e->getMessage(), 'task');
+            return [
+                'success' => false, 
+                'message' => 'Ошибка: ' . $e->getMessage(),
+                'trace' => YII_DEBUG ? $e->getTraceAsString() : null
+            ];
+        }
+    }
+
+    /**
+     * Архивирует задачу
+     * @param string $id
+     * @return \yii\web\Response
+     * @throws NotFoundHttpException if the model cannot be found
+     */
+    public function actionArchive($id)
+    {
+        $model = $this->findModel($id);
+        $user = Yii::$app->user->identity;
+        
+        // Проверка прав доступа
+        $this->checkAccess($model, $user);
+        
+        // Архивировать можно только выполненные задачи
+        if ($model->status !== Task::STATUS_DONE) {
+            Yii::$app->session->setFlash('error', 'Архивировать можно только выполненные задачи.');
+            return $this->redirect(['view', 'id' => $id]);
+        }
+        
+        $model->is_archived = true;
+        if ($model->save(false)) {
+            Yii::$app->session->setFlash('success', 'Задача успешно архивирована.');
+        } else {
+            Yii::$app->session->setFlash('error', 'Ошибка при архивации задачи.');
+        }
+        
+        return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
+    }
+
+    /**
+     * Разархивирует задачу
+     * @param string $id
+     * @return \yii\web\Response
+     * @throws NotFoundHttpException if the model cannot be found
+     */
+    public function actionUnarchive($id)
+    {
+        $model = $this->findModel($id);
+        $user = Yii::$app->user->identity;
+        
+        // Проверка прав доступа
+        $this->checkAccess($model, $user);
+        
+        $model->is_archived = false;
+        if ($model->save(false)) {
+            Yii::$app->session->setFlash('success', 'Задача успешно разархивирована.');
+        } else {
+            Yii::$app->session->setFlash('error', 'Ошибка при разархивации задачи.');
+        }
+        
+        return $this->redirect(['project/archive', 'id' => (string)$model->project_id]);
+    }
+
+    /**
      * Finds the Task model based on its primary key value.
      * If the model is not found, a 404 HTTP exception will be thrown.
      * @param string $id
@@ -366,8 +569,22 @@ class TaskController extends Controller
             return;
         }
         
-        // Ректор, топ-менеджер и менеджер могут редактировать задачи проектов своего подразделения
-        if (in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) && 
+        // Руководитель может редактировать задачи проектов своего подразделения
+        if ($user->role === User::ROLE_HEAD && 
+            $model->project && $model->project->department_id && $user->department_id &&
+            (string)$model->project->department_id === (string)$user->department_id) {
+            return;
+        }
+        
+        // Топ-менеджер может редактировать задачи проектов своего подразделения
+        if ($user->role === User::ROLE_TOP_MANAGER && 
+            $model->project && $model->project->department_id && $user->department_id &&
+            (string)$model->project->department_id === (string)$user->department_id) {
+            return;
+        }
+        
+        // Менеджер может редактировать задачи проектов своего подразделения
+        if ($user->role === User::ROLE_MANAGER && 
             $model->project && $model->project->department_id && $user->department_id &&
             (string)$model->project->department_id === (string)$user->department_id) {
             return;
@@ -391,8 +608,27 @@ class TaskController extends Controller
             return;
         }
         
-        // Ректор, топ-менеджер и менеджер имеют доступ к задачам проектов своего подразделения
-        if (in_array($user->role, [User::ROLE_RECTOR, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER]) && 
+        // Ректор имеет доступ ко всем задачам (только просмотр)
+        if ($user->role === User::ROLE_RECTOR) {
+            return;
+        }
+        
+        // Руководитель имеет доступ к задачам проектов своего подразделения
+        if ($user->role === User::ROLE_HEAD && 
+            $model->project && $model->project->department_id && $user->department_id &&
+            (string)$model->project->department_id === (string)$user->department_id) {
+            return;
+        }
+        
+        // Топ-менеджер имеет доступ к задачам проектов своего подразделения
+        if ($user->role === User::ROLE_TOP_MANAGER && 
+            $model->project && $model->project->department_id && $user->department_id &&
+            (string)$model->project->department_id === (string)$user->department_id) {
+            return;
+        }
+        
+        // Менеджер имеет доступ к задачам проектов своего подразделения
+        if ($user->role === User::ROLE_MANAGER && 
             $model->project && $model->project->department_id && $user->department_id &&
             (string)$model->project->department_id === (string)$user->department_id) {
             return;

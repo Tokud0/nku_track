@@ -55,7 +55,7 @@ $this->params['breadcrumbs'][] = $this->title;
                 $departmentList,
                 ['prompt' => 'Выберите подразделение']
             ) ?>
-        <?php elseif (Yii::$app->user->identity->role === \app\models\User::ROLE_RECTOR): ?>
+        <?php elseif (Yii::$app->user->identity->role === \app\models\User::ROLE_HEAD): ?>
             <?php
             // Ректор видит только свое подразделение (автоматически установится в контроллере)
             $userDept = Yii::$app->user->identity->department;

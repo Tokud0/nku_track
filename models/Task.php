@@ -24,7 +24,9 @@ use app\models\Department;
  * @property \MongoDB\BSON\UTCDateTime|null $start_date
  * @property \MongoDB\BSON\UTCDateTime|null $due_date
  * @property int $progress 0–100%
+ * @property array $subtasks массив подзадач (to-do лист) [['text' => string, 'completed' => bool], ...]
  * @property array $attachments массив вложений
+ * @property bool $is_archived флаг архивации задачи
  * @property \MongoDB\BSON\UTCDateTime $created_at
  * @property \MongoDB\BSON\UTCDateTime $updated_at
  */
@@ -68,7 +70,9 @@ class Task extends ActiveRecord
             'start_date',
             'due_date',
             'progress',
+            'subtasks',
             'attachments',
+            'is_archived',
             'created_at',
             'updated_at',
         ];
@@ -97,7 +101,9 @@ class Task extends ActiveRecord
             ]],
             [['progress'], 'integer', 'min' => 0, 'max' => 100],
             [['executor_user_from_department_id', 'executor_subdepartment_id', 'executor_user_from_subdepartment_id'], 'validateExecutor'],
-            [['attachments'], 'safe'],
+            [['attachments', 'subtasks'], 'safe'],
+            [['is_archived'], 'boolean'],
+            [['is_archived'], 'default', 'value' => false],
             [['start_date', 'due_date', 'created_at', 'updated_at'], 'safe'],
             [['project_id', 'creator_id'], 'safe'], // Помечаем как safe, так как устанавливаем в контроллере
         ];
@@ -123,6 +129,7 @@ class Task extends ActiveRecord
             'due_date' => 'Срок выполнения',
             'progress' => 'Прогресс (%)',
             'attachments' => 'Вложения',
+            'is_archived' => 'В архиве',
             'created_at' => 'Дата создания',
             'updated_at' => 'Дата обновления',
         ];
@@ -166,6 +173,12 @@ class Task extends ActiveRecord
                 $this->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($this->executor_user_from_subdepartment_id);
             }
             
+            // Автоматически рассчитываем прогресс на основе подзадач
+            $total = $this->getTotalSubtasksCount();
+            if ($total > 0) {
+                $this->progress = $this->calculateProgress();
+            }
+            
             if ($insert) {
                 $this->created_at = new \MongoDB\BSON\UTCDateTime();
                 if (empty($this->status)) {
@@ -179,6 +192,12 @@ class Task extends ActiveRecord
                 }
                 if ($this->attachments === null) {
                     $this->attachments = [];
+                }
+                if ($this->subtasks === null) {
+                    $this->subtasks = [];
+                }
+                if ($this->is_archived === null) {
+                    $this->is_archived = false;
                 }
             }
             $this->updated_at = new \MongoDB\BSON\UTCDateTime();
@@ -396,5 +415,72 @@ class Task extends ActiveRecord
         ];
         return $colors[$this->status] ?? 'secondary';
     }
+
+    /**
+     * Получает количество выполненных подзадач
+     *
+     * @return int
+     */
+    public function getCompletedSubtasksCount()
+    {
+        if (!is_array($this->subtasks) || empty($this->subtasks)) {
+            return 0;
+        }
+        
+        $completed = 0;
+        foreach ($this->subtasks as $subtask) {
+            if (isset($subtask['completed']) && $subtask['completed'] === true) {
+                $completed++;
+            }
+        }
+        
+        return $completed;
+    }
+
+    /**
+     * Получает общее количество подзадач
+     *
+     * @return int
+     */
+    public function getTotalSubtasksCount()
+    {
+        if (!is_array($this->subtasks)) {
+            return 0;
+        }
+        return count($this->subtasks);
+    }
+
+    /**
+     * Получает формат прогресса "X/Y" на основе подзадач
+     *
+     * @return string
+     */
+    public function getProgressFormat()
+    {
+        $total = $this->getTotalSubtasksCount();
+        if ($total === 0) {
+            return '0/0';
+        }
+        $completed = $this->getCompletedSubtasksCount();
+        return $completed . '/' . $total;
+    }
+
+    /**
+     * Автоматически рассчитывает прогресс на основе подзадач
+     * Если есть подзадачи, прогресс рассчитывается от них
+     * Если подзадач нет, используется значение progress
+     *
+     * @return int процент выполнения (0-100)
+     */
+    public function calculateProgress()
+    {
+        $total = $this->getTotalSubtasksCount();
+        if ($total > 0) {
+            $completed = $this->getCompletedSubtasksCount();
+            return round(($completed / $total) * 100);
+        }
+        return $this->progress ?? 0;
+    }
+
 }
 
