@@ -7,6 +7,9 @@ use app\models\Project;
 use app\models\ProjectSearch;
 use app\models\ProjectSpec;
 use app\models\Task;
+use app\models\Roadmap;
+use app\models\RoadmapStage;
+use app\models\RoadmapStageGoal;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
 use yii\filters\VerbFilter;
@@ -340,6 +343,59 @@ class ProjectController extends Controller
         return $this->render('archive', [
             'model' => $model,
             'tasks' => $tasks,
+        ]);
+    }
+
+    /**
+     * Displays mind map for project
+     * @param string $id
+     * @return mixed
+     * @throws NotFoundHttpException if the model cannot be found
+     */
+    public function actionMindMap($id)
+    {
+        $model = $this->findModel($id);
+        
+        // Проверка доступа
+        $this->checkAccess($model);
+        
+        // Получаем задачи проекта (не архивные) с их подзадачами
+        $tasks = Task::find()
+            ->where([
+                'project_id' => $model->_id,
+                '$or' => [
+                    ['is_archived' => false],
+                    ['is_archived' => ['$exists' => false]],
+                ]
+            ])
+            ->orderBy(['created_at' => SORT_ASC])
+            ->all();
+        
+        // Формируем данные для mind map: задача -> её подзадачи
+        $tasksData = [];
+        foreach ($tasks as $task) {
+            $subtasks = [];
+            if (is_array($task->subtasks)) {
+                foreach ($task->subtasks as $subtask) {
+                    // Показываем все подзадачи, включая выполненные
+                    $subtasks[] = [
+                        'text' => trim($subtask['text'] ?? ''),
+                        'completed' => isset($subtask['completed']) && $subtask['completed'] === true,
+                    ];
+                }
+            }
+            
+            $tasksData[] = [
+                'id' => (string)$task->_id,
+                'title' => $task->title,
+                'description' => $task->description ?? '',
+                'subtasks' => $subtasks,
+            ];
+        }
+        
+        return $this->render('mind-map', [
+            'model' => $model,
+            'tasks' => $tasksData,
         ]);
     }
 

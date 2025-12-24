@@ -13,6 +13,7 @@ use Yii;
  * @property string $title название цели
  * @property string $description описание цели
  * @property int $order порядок отображения
+ * @property bool $is_archived флаг архивации цели
  * @property \MongoDB\BSON\UTCDateTime $created_at
  * @property \MongoDB\BSON\UTCDateTime $updated_at
  */
@@ -37,6 +38,7 @@ class RoadmapStageGoal extends ActiveRecord
             'title',
             'description',
             'order',
+            'is_archived',
             'created_at',
             'updated_at',
         ];
@@ -53,6 +55,8 @@ class RoadmapStageGoal extends ActiveRecord
             [['title'], 'string', 'max' => 255],
             [['description'], 'string'],
             [['order'], 'integer', 'min' => 0],
+            [['is_archived'], 'boolean'],
+            [['is_archived'], 'default', 'value' => false],
             [['created_at', 'updated_at'], 'safe'],
         ];
     }
@@ -68,6 +72,7 @@ class RoadmapStageGoal extends ActiveRecord
             'title' => 'Название цели',
             'description' => 'Описание цели',
             'order' => 'Порядок',
+            'is_archived' => 'В архиве',
             'created_at' => 'Дата создания',
             'updated_at' => 'Дата обновления',
         ];
@@ -88,6 +93,9 @@ class RoadmapStageGoal extends ActiveRecord
             }
             if ($insert) {
                 $this->created_at = new \MongoDB\BSON\UTCDateTime();
+                if ($this->is_archived === null) {
+                    $this->is_archived = false;
+                }
             }
             $this->updated_at = new \MongoDB\BSON\UTCDateTime();
             return true;

@@ -111,6 +111,11 @@ foreach ($tasks as $task) {
                         ['index'],
                         ['class' => 'nku-btn nku-btn--secondary mb-2']
                     ) ?>
+                    <?= Html::a(
+                        '<i class="fas fa-project-diagram me-2"></i>Mind Map',
+                        ['mind-map', 'id' => (string)$model->_id],
+                        ['class' => 'nku-btn nku-btn--info mb-2']
+                    ) ?>
                     <?php if ($canEdit): ?>
                         <div class="d-flex gap-2">
                             <?= Html::a(
@@ -211,6 +216,13 @@ foreach ($tasks as $task) {
                 Задачи
                 <span class="badge bg-primary ms-2"><?= $tasksCount ?></span>
             </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <?= Html::a(
+                '<i class="fas fa-project-diagram me-2"></i>Mind Map',
+                ['mind-map', 'id' => (string)$model->_id],
+                ['class' => 'nav-link']
+            ) ?>
         </li>
     </ul>
 
