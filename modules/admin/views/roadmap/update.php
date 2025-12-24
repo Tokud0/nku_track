@@ -54,6 +54,25 @@ var deleteGoalUrl = '$deleteGoalUrl';
 var csrfToken = '$csrfToken';
 var csrfParam = '$csrfParam';
 
+// Функция для отображения уведомлений
+function showNotification(message, type) {
+    type = type || 'info';
+    var alertClass = 'alert-' + type;
+    var notificationId = 'goal-notification-' + Date.now();
+    var notificationHtml = '<div id="' + notificationId + '" class="alert ' + alertClass + ' alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px; max-width: 400px;">' +
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+        '</div>';
+    $('body').append(notificationHtml);
+    
+    // Автоматически скрываем уведомление через 3 секунды
+    setTimeout(function() {
+        $('#' + notificationId).fadeOut(300, function() {
+            $(this).remove();
+        });
+    }, 3000);
+}
+
 function renderStages() {
     var container = $('#stages-container');
     container.empty();
@@ -92,7 +111,10 @@ function renderStages() {
         stageHtml += '<label>Описание этапа</label>';
         stageHtml += '<textarea class="form-control stage-description" rows="3">' + escapeHtml(stage.description || '') + '</textarea>';
         stageHtml += '</div>';
-        stageHtml += '<button type="button" class="btn btn-primary save-stage-btn" data-stage-id="' + stage.id + '">Сохранить этап</button>';
+        // Если этап уже существует (есть id), показываем "Сохранить изменения этапа", иначе "Сохранить этап"
+        var stageButtonText = stage.id ? 'Сохранить изменения этапа' : 'Сохранить этап';
+        var stageButtonClass = stage.id ? 'btn-success' : 'btn-primary';
+        stageHtml += '<button type="button" class="btn ' + stageButtonClass + ' save-stage-btn" data-stage-id="' + (stage.id || '') + '">' + stageButtonText + '</button>';
         stageHtml += '</div>';
         
         // Цели этапа
@@ -102,7 +124,11 @@ function renderStages() {
         
         if (stage.goals && stage.goals.length > 0) {
             stage.goals.forEach(function(goal, goalIndex) {
-                stageHtml += renderGoal(goal, goalIndex);
+                // Устанавливаем stage_id для цели, если он не задан
+                if (!goal.stage_id) {
+                    goal.stage_id = stage.id;
+                }
+                stageHtml += renderGoal(goal, goalIndex, stage.id);
             });
         } else {
             stageHtml += '<p class="text-muted">Цели не добавлены</p>';
@@ -117,22 +143,27 @@ function renderStages() {
     attachEventHandlers();
 }
 
-function renderGoal(goal, index) {
-    var goalHtml = '<div class="card mb-3 goal-item" data-goal-id="' + goal.id + '" data-stage-id="' + (goal.stage_id || '') + '">';
+function renderGoal(goal, index, stageId) {
+    // Используем переданный stageId или из goal, если он есть
+    var goalStageId = stageId || goal.stage_id || '';
+    var goalHtml = '<div class="card mb-3 goal-item" data-goal-id="' + (goal.id || '') + '" data-stage-id="' + goalStageId + '">';
     goalHtml += '<div class="card-body">';
     goalHtml += '<div class="d-flex justify-content-between align-items-start mb-2">';
     goalHtml += '<h6 class="mb-0">Цель ' + (index + 1) + '</h6>';
-    goalHtml += '<button type="button" class="btn btn-sm btn-danger delete-goal-btn" data-goal-id="' + goal.id + '">Удалить</button>';
+    goalHtml += '<button type="button" class="btn btn-sm btn-danger delete-goal-btn" data-goal-id="' + (goal.id || '') + '">Удалить</button>';
     goalHtml += '</div>';
     goalHtml += '<div class="mb-2">';
     goalHtml += '<label>Название цели</label>';
-    goalHtml += '<input type="text" class="form-control goal-title" value="' + escapeHtml(goal.title) + '">';
+    goalHtml += '<input type="text" class="form-control goal-title" value="' + escapeHtml(goal.title || '') + '">';
     goalHtml += '</div>';
     goalHtml += '<div class="mb-2">';
     goalHtml += '<label>Описание цели</label>';
     goalHtml += '<textarea class="form-control goal-description" rows="2">' + escapeHtml(goal.description || '') + '</textarea>';
     goalHtml += '</div>';
-    goalHtml += '<button type="button" class="btn btn-primary btn-sm save-goal-btn" data-goal-id="' + goal.id + '">Сохранить цель</button>';
+    // Если цель уже существует (есть id), показываем "Сохранить изменения", иначе "Сохранить цель"
+    var buttonText = goal.id ? 'Сохранить изменения' : 'Сохранить цель';
+    var buttonClass = goal.id ? 'btn-success' : 'btn-primary';
+    goalHtml += '<button type="button" class="btn ' + buttonClass + ' btn-sm save-goal-btn" data-goal-id="' + (goal.id || '') + '">' + buttonText + '</button>';
     goalHtml += '</div></div>';
     return goalHtml;
 }
@@ -153,13 +184,17 @@ function attachEventHandlers() {
     
     // Сохранение этапа
     $('.save-stage-btn').off('click').on('click', function() {
-        var stageId = $(this).data('stage-id');
-        var stageItem = $(this).closest('.stage-item');
+        var saveStageBtn = $(this);
+        var stageId = saveStageBtn.data('stage-id');
+        var stageItem = saveStageBtn.closest('.stage-item');
         var stageIndex = stages.findIndex(function(s) {
             return (s.id && s.id === stageId) || (!s.id && !stageId);
         });
         
-        if (stageIndex === -1) return;
+        if (stageIndex === -1) {
+            showNotification('Ошибка: этап не найден', 'danger');
+            return;
+        }
         
         var stage = stages[stageIndex];
         stage.name = stageItem.find('.stage-name').val();
@@ -183,15 +218,23 @@ function attachEventHandlers() {
                 if (response.success) {
                     if (!stage.id) {
                         stage.id = response.stage.id;
+                        // Обновляем data-stage-id у элемента этапа и кнопки
+                        stageItem.attr('data-stage-id', stage.id);
+                        saveStageBtn.attr('data-stage-id', stage.id);
                     }
                     stageItem.find('.stage-name-display').text(stage.name);
-                    alert('Этап успешно сохранен!');
+                    
+                    // Обновляем текст кнопки на "Сохранить изменения этапа" и делаем её зеленой
+                    saveStageBtn.text('Сохранить изменения этапа').removeClass('btn-primary').addClass('btn-success');
+                    
+                    // Показываем уведомление об успешном сохранении
+                    showNotification('Изменения этапа успешно сохранены!', 'success');
                 } else {
-                    alert('Ошибка: ' + response.message);
+                    showNotification('Ошибка: ' + response.message, 'danger');
                 }
             },
             error: function() {
-                alert('Ошибка при сохранении этапа');
+                showNotification('Ошибка при сохранении этапа', 'danger');
             }
         });
     });
@@ -252,17 +295,30 @@ function attachEventHandlers() {
     
     // Сохранение цели
     $('.save-goal-btn').off('click').on('click', function() {
-        var goalId = $(this).data('goal-id');
-        var goalItem = $(this).closest('.goal-item');
-        var stageId = goalItem.data('stage-id');
+        var saveBtn = $(this);
+        var goalId = saveBtn.data('goal-id');
+        var goalItem = saveBtn.closest('.goal-item');
+        // Получаем stageId из data-stage-id элемента цели или из родительского контейнера
+        var stageId = goalItem.data('stage-id') || goalItem.closest('.goals-container').data('stage-id');
+        
+        if (!stageId) {
+            showNotification('Ошибка: не удалось определить этап', 'danger');
+            return;
+        }
         
         var stageIndex = stages.findIndex(function(s) { return s.id === stageId; });
-        if (stageIndex === -1) return;
+        if (stageIndex === -1) {
+            showNotification('Ошибка: этап не найден', 'danger');
+            return;
+        }
         
         var goalIndex = stages[stageIndex].goals.findIndex(function(g) {
             return (g.id && g.id === goalId) || (!g.id && !goalId);
         });
-        if (goalIndex === -1) return;
+        if (goalIndex === -1) {
+            showNotification('Ошибка: цель не найдена в массиве', 'danger');
+            return;
+        }
         
         var goal = stages[stageIndex].goals[goalIndex];
         goal.title = goalItem.find('.goal-title').val();
@@ -277,20 +333,27 @@ function attachEventHandlers() {
                 stage_id: stageId,
                 title: goal.title,
                 description: goal.description,
-                _csrf: yii.getCsrfToken()
+                [csrfParam]: csrfToken
             },
             success: function(response) {
                 if (response.success) {
                     if (!goal.id) {
                         goal.id = response.goal.id;
+                        // Обновляем data-goal-id у элемента цели и кнопки
+                        goalItem.attr('data-goal-id', goal.id);
+                        saveBtn.attr('data-goal-id', goal.id);
                     }
-                    alert('Цель успешно сохранена!');
+                    // Обновляем текст кнопки на "Сохранить изменения" и делаем её зеленой
+                    saveBtn.text('Сохранить изменения').removeClass('btn-primary').addClass('btn-success');
+                    
+                    // Показываем уведомление об успешном сохранении
+                    showNotification('Изменения успешно сохранены!', 'success');
                 } else {
-                    alert('Ошибка: ' + response.message);
+                    showNotification('Ошибка: ' + response.message, 'danger');
                 }
             },
             error: function() {
-                alert('Ошибка при сохранении цели');
+                showNotification('Ошибка при сохранении цели', 'danger');
             }
         });
     });
