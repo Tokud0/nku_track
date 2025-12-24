@@ -324,14 +324,6 @@ class DepartmentController extends Controller
             ];
         }
         
-        // Нельзя изменить роль администратора
-        if ($user->role === User::ROLE_ADMIN) {
-            return [
-                'success' => false,
-                'message' => 'Нельзя изменить роль администратора'
-            ];
-        }
-        
         // Находим пользователя
         try {
             $user = User::findOne(['_id' => new \MongoDB\BSON\ObjectId($userId)]);
@@ -339,6 +331,14 @@ class DepartmentController extends Controller
                 return [
                     'success' => false,
                     'message' => 'Пользователь не найден'
+                ];
+            }
+            
+            // Нельзя изменить роль администратора
+            if ($user->role === User::ROLE_ADMIN) {
+                return [
+                    'success' => false,
+                    'message' => 'Нельзя изменить роль администратора'
                 ];
             }
             
