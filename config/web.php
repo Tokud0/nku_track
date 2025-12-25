@@ -67,6 +67,7 @@ $config = [
                 'project/<action:\w+>' => 'project/<action>',
                 'project/<action:\w+>/<id:[a-f0-9]{24}>' => 'project/<action>',
                 // Правила для ТЗ
+                'project-spec/toggle-milestone/<project_id:[a-f0-9]{24}>' => 'project-spec/toggle-milestone',
                 'project-spec/<action:\w+>/<project_id:[a-f0-9]{24}>' => 'project-spec/<action>',
                 // Правила для задач
                 'task/create/<project_id:[a-f0-9]{24}>' => 'task/create',

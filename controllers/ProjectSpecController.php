@@ -35,6 +35,7 @@ class ProjectSpecController extends Controller
                 'class' => VerbFilter::class,
                 'actions' => [
                     'delete' => ['POST'],
+                    'toggle-milestone' => ['POST'],
                 ],
             ],
         ];
@@ -288,6 +289,91 @@ class ProjectSpecController extends Controller
             'model' => $model,
             'project' => $project,
         ]);
+    }
+
+    /**
+     * Переключает статус выполнения этапа (AJAX)
+     * @param string $project_id
+     * @param int $milestone_index
+     * @return \yii\web\Response
+     */
+    public function actionToggleMilestone($project_id, $milestone_index = null)
+    {
+        Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
+        
+        // Получаем milestone_index из POST, если не передан в URL
+        if ($milestone_index === null) {
+            $milestone_index = Yii::$app->request->post('milestone_index');
+        }
+        
+        if ($milestone_index === null) {
+            return ['success' => false, 'message' => 'Не указан индекс этапа.'];
+        }
+        
+        // Преобразуем milestone_index в int
+        $milestone_index = (int)$milestone_index;
+        
+        try {
+            // Конвертируем project_id в ObjectId если это строка
+            $projectIdObj = is_string($project_id) ? new \MongoDB\BSON\ObjectId($project_id) : $project_id;
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => 'Неверный формат ID проекта.'];
+        }
+        
+        $project = Project::findOne(['_id' => $projectIdObj]);
+        if (!$project) {
+            return ['success' => false, 'message' => 'Проект не найден.'];
+        }
+        
+        $user = Yii::$app->user->identity;
+        if (!$user) {
+            return ['success' => false, 'message' => 'Пользователь не авторизован.'];
+        }
+        
+        // Проверка прав: только админ, руководитель или топ-менеджер
+        $canToggle = false;
+        if ($user->role === User::ROLE_ADMIN) {
+            $canToggle = true;
+        } elseif ($user->role === User::ROLE_HEAD) {
+            if ($project->department_id && $user->department_id &&
+                (string)$project->department_id === (string)$user->department_id) {
+                $canToggle = true;
+            }
+        } elseif ($user->role === User::ROLE_TOP_MANAGER) {
+            if ($project->department_id && $user->department_id &&
+                (string)$project->department_id === (string)$user->department_id) {
+                $canToggle = true;
+            }
+        }
+        
+        if (!$canToggle) {
+            return ['success' => false, 'message' => 'У вас нет прав для изменения статуса этапа.'];
+        }
+        
+        $model = ProjectSpec::findOne(['project_id' => $projectIdObj]);
+        if (!$model) {
+            return ['success' => false, 'message' => 'Техническое задание не найдено.'];
+        }
+        
+        if (empty($model->milestones) || !isset($model->milestones[$milestone_index])) {
+            return ['success' => false, 'message' => 'Этап не найден.'];
+        }
+        
+        // Переключаем статус
+        $milestones = $model->milestones;
+        $milestones[$milestone_index]['done'] = !isset($milestones[$milestone_index]['done']) || !$milestones[$milestone_index]['done'];
+        $model->milestones = $milestones;
+        
+        if ($model->save()) {
+            return [
+                'success' => true,
+                'done' => $milestones[$milestone_index]['done']
+            ];
+        } else {
+            $errors = $model->getFirstErrors();
+            $errorMessage = !empty($errors) ? implode(', ', $errors) : 'Ошибка при сохранении.';
+            return ['success' => false, 'message' => $errorMessage];
+        }
     }
 
     /**

@@ -389,15 +389,31 @@ foreach ($tasks as $task) {
                             <div class="mb-4">
                                 <h6 class="text-muted mb-3">Этапы проекта</h6>
                                 <div class="list-group">
-                                    <?php foreach ($spec->milestones as $milestone): ?>
-                                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <?php foreach ($spec->milestones as $index => $milestone): ?>
+                                        <div class="list-group-item d-flex justify-content-between align-items-center milestone-item" data-milestone-index="<?= $index ?>">
                                             <div class="d-flex align-items-center">
-                                                <?php if (isset($milestone['done']) && $milestone['done']): ?>
-                                                    <i class="fas fa-check-circle text-success me-3" style="font-size: 1.25rem;"></i>
+                                                <?php if ($canWorkWithSpec): ?>
+                                                    <!-- Чекбокс для пользователей с правами -->
+                                                    <div class="form-check me-3">
+                                                        <input class="form-check-input milestone-checkbox" 
+                                                               type="checkbox" 
+                                                               data-project-id="<?= (string)$model->_id ?>"
+                                                               data-milestone-index="<?= $index ?>"
+                                                               id="milestone-<?= $index ?>"
+                                                               <?= (isset($milestone['done']) && $milestone['done']) ? 'checked' : '' ?>
+                                                               style="width: 1.25rem; height: 1.25rem; cursor: pointer;">
+                                                    </div>
                                                 <?php else: ?>
-                                                    <i class="far fa-circle text-secondary me-3" style="font-size: 1.25rem;"></i>
+                                                    <!-- Иконка для пользователей без прав -->
+                                                    <?php if (isset($milestone['done']) && $milestone['done']): ?>
+                                                        <i class="fas fa-check-circle text-success me-3" style="font-size: 1.25rem;"></i>
+                                                    <?php else: ?>
+                                                        <i class="far fa-circle text-secondary me-3" style="font-size: 1.25rem;"></i>
+                                                    <?php endif; ?>
                                                 <?php endif; ?>
-                                                <span><?= Html::encode($milestone['name'] ?? 'Без названия') ?></span>
+                                                <span class="<?= (isset($milestone['done']) && $milestone['done']) ? 'text-decoration-line-through text-muted' : '' ?>">
+                                                    <?= Html::encode($milestone['name'] ?? 'Без названия') ?>
+                                                </span>
                                             </div>
                                             <?php if (isset($milestone['deadline']) && $milestone['deadline']): ?>
                                                 <span class="nku-badge nku-badge--secondary">
@@ -594,3 +610,80 @@ foreach ($tasks as $task) {
     line-height: 1.7;
 }
 </style>
+
+<?php if ($canWorkWithSpec && !empty($spec->milestones)): ?>
+<?php
+$csrfParam = Yii::$app->request->csrfParam;
+$csrfToken = Yii::$app->request->csrfToken;
+$baseUrl = Url::to(['project-spec/toggle-milestone', 'project_id' => (string)$model->_id]);
+?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const checkboxes = document.querySelectorAll('.milestone-checkbox');
+    const baseUrl = '<?= $baseUrl ?>';
+    
+    checkboxes.forEach(function(checkbox) {
+        checkbox.addEventListener('change', function() {
+            const projectId = this.getAttribute('data-project-id');
+            const milestoneIndex = this.getAttribute('data-milestone-index');
+            const isChecked = this.checked;
+            const milestoneItem = this.closest('.milestone-item');
+            const milestoneName = milestoneItem.querySelector('span:not(.nku-badge)');
+            
+            // Блокируем чекбокс во время запроса
+            this.disabled = true;
+            
+            // Формируем URL с параметрами
+            const url = baseUrl;
+            const formData = new URLSearchParams();
+            formData.append('milestone_index', milestoneIndex);
+            formData.append('<?= $csrfParam ?>', '<?= $csrfToken ?>');
+            
+            // Отправляем AJAX-запрос
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-Token': '<?= $csrfToken ?>'
+                },
+                body: formData.toString()
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error('Response error:', text);
+                        throw new Error('HTTP error! status: ' + response.status);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Response data:', data);
+                if (data.success) {
+                    // Обновляем визуальное состояние
+                    if (data.done) {
+                        milestoneName.classList.add('text-decoration-line-through', 'text-muted');
+                    } else {
+                        milestoneName.classList.remove('text-decoration-line-through', 'text-muted');
+                    }
+                } else {
+                    // Возвращаем чекбокс в исходное состояние при ошибке
+                    this.checked = !isChecked;
+                    alert(data.message || 'Произошла ошибка при обновлении статуса этапа.');
+                }
+                this.disabled = false;
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                // Возвращаем чекбокс в исходное состояние при ошибке
+                this.checked = !isChecked;
+                alert('Произошла ошибка при обновлении статуса этапа: ' + error.message);
+                this.disabled = false;
+            });
+        });
+    });
+});
+</script>
+<?php endif; ?>
