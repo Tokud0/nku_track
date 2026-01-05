@@ -10,6 +10,7 @@ use Yii;
  *
  * @property \MongoDB\BSON\ObjectId $_id
  * @property \MongoDB\BSON\ObjectId $department_id ссылка на подразделение
+ * @property \MongoDB\BSON\UTCDateTime|null $start_date дата начала дорожной карты
  * @property \MongoDB\BSON\UTCDateTime $created_at
  * @property \MongoDB\BSON\UTCDateTime $updated_at
  */
@@ -31,6 +32,7 @@ class Roadmap extends ActiveRecord
         return [
             '_id',
             'department_id',
+            'start_date',
             'created_at',
             'updated_at',
         ];
@@ -45,7 +47,7 @@ class Roadmap extends ActiveRecord
             [['department_id'], 'required'],
             [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id'],
             [['department_id'], 'unique', 'message' => 'Дорожная карта для этого подразделения уже существует.'],
-            [['created_at', 'updated_at'], 'safe'],
+            [['start_date', 'created_at', 'updated_at'], 'safe'],
         ];
     }
 
@@ -57,6 +59,7 @@ class Roadmap extends ActiveRecord
         return [
             '_id' => 'ID',
             'department_id' => 'Подразделение',
+            'start_date' => 'Дата начала дорожной карты',
             'created_at' => 'Дата создания',
             'updated_at' => 'Дата обновления',
         ];

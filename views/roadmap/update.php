@@ -22,18 +22,31 @@ $stagesJson = Json::encode(array_map(function($stage) {
             'description' => $goal->description,
         ];
     }
+    $startDate = '';
+    $endDate = '';
+    if ($stage->start_date instanceof \MongoDB\BSON\UTCDateTime) {
+        $startDate = date('Y-m-d', $stage->start_date->toDateTime()->getTimestamp());
+    }
+    if ($stage->end_date instanceof \MongoDB\BSON\UTCDateTime) {
+        $endDate = date('Y-m-d', $stage->end_date->toDateTime()->getTimestamp());
+    }
     return [
         'id' => (string)$stage->_id,
         'name' => $stage->name,
         'start_month' => $stage->start_month,
         'end_month' => $stage->end_month,
+        'start_date' => $startDate,
+        'end_date' => $endDate,
         'description' => $stage->description,
+        'is_completed' => !empty($stage->is_completed),
+        'completion_format' => $stage->completion_format ?? '',
         'goals' => $goals,
     ];
 }, $stages));
 
 $saveStageUrl = Url::to(['save-stage']);
 $saveGoalUrl = Url::to(['save-goal']);
+$completeStageUrl = Url::to(['complete-stage']);
 $deleteStageUrl = Url::to(['delete-stage']);
 $deleteGoalUrl = Url::to(['delete-goal']);
 $roadmapId = (string)$roadmap->_id;
@@ -45,6 +58,7 @@ var stages = $stagesJson;
 var roadmapId = '$roadmapId';
 var saveStageUrl = '$saveStageUrl';
 var saveGoalUrl = '$saveGoalUrl';
+var completeStageUrl = '$completeStageUrl';
 var deleteStageUrl = '$deleteStageUrl';
 var deleteGoalUrl = '$deleteGoalUrl';
 var csrfToken = '$csrfToken';
@@ -82,8 +96,17 @@ function renderStages() {
         var stageHtml = '<div class="card mb-4 stage-item" data-stage-id="' + stage.id + '">';
         stageHtml += '<div class="card-header bg-primary text-white">';
         stageHtml += '<div class="d-flex justify-content-between align-items-center">';
-        stageHtml += '<h5 class="mb-0">Этап ' + (stageIndex + 1) + ': <span class="stage-name-display">' + escapeHtml(stage.name) + '</span></h5>';
+        stageHtml += '<h5 class="mb-0">Этап ' + (stageIndex + 1) + ': <span class="stage-name-display">' + escapeHtml(stage.name) + '</span>';
+        if (stage.is_completed) {
+            stageHtml += ' <span class="badge bg-success ms-2">Завершен</span>';
+        }
+        stageHtml += '</h5>';
+        stageHtml += '<div>';
+        if (!stage.is_completed && stage.id) {
+            stageHtml += '<button type="button" class="btn btn-sm btn-success me-2 complete-stage-btn" data-stage-id="' + stage.id + '">Завершить этап</button>';
+        }
         stageHtml += '<button type="button" class="btn btn-sm btn-danger delete-stage-btn" data-stage-id="' + stage.id + '">Удалить этап</button>';
+        stageHtml += '</div>';
         stageHtml += '</div></div>';
         stageHtml += '<div class="card-body">';
         
@@ -103,10 +126,26 @@ function renderStages() {
         stageHtml += '<input type="number" class="form-control stage-end-month" value="' + stage.end_month + '" min="0">';
         stageHtml += '</div>';
         stageHtml += '</div>';
+        stageHtml += '<div class="row mb-3">';
+        stageHtml += '<div class="col-md-6">';
+        stageHtml += '<label>Дата начала этапа</label>';
+        stageHtml += '<input type="date" class="form-control stage-start-date" value="' + (stage.start_date || '') + '">';
+        stageHtml += '</div>';
+        stageHtml += '<div class="col-md-6">';
+        stageHtml += '<label>Дата окончания этапа</label>';
+        stageHtml += '<input type="date" class="form-control stage-end-date" value="' + (stage.end_date || '') + '">';
+        stageHtml += '</div>';
+        stageHtml += '</div>';
         stageHtml += '<div class="mb-3">';
         stageHtml += '<label>Описание этапа</label>';
         stageHtml += '<textarea class="form-control stage-description" rows="3">' + escapeHtml(stage.description || '') + '</textarea>';
         stageHtml += '</div>';
+        if (stage.is_completed && stage.completion_format) {
+            stageHtml += '<div class="alert alert-success mb-3">';
+            stageHtml += '<strong>Этап завершен</strong><br>';
+            stageHtml += '<small>Формат завершения: ' + escapeHtml(stage.completion_format) + '</small>';
+            stageHtml += '</div>';
+        }
         // Если этап уже существует (есть id), показываем "Сохранить изменения этапа", иначе "Сохранить этап"
         var stageButtonText = stage.id ? 'Сохранить изменения этапа' : 'Сохранить этап';
         var stageButtonClass = stage.id ? 'btn-success' : 'btn-primary';
@@ -196,6 +235,8 @@ function attachEventHandlers() {
         stage.name = stageItem.find('.stage-name').val();
         stage.start_month = parseInt(stageItem.find('.stage-start-month').val()) || 0;
         stage.end_month = parseInt(stageItem.find('.stage-end-month').val()) || 0;
+        stage.start_date = stageItem.find('.stage-start-date').val() || '';
+        stage.end_date = stageItem.find('.stage-end-date').val() || '';
         stage.description = stageItem.find('.stage-description').val();
         
         $.ajax({
@@ -207,6 +248,8 @@ function attachEventHandlers() {
                 name: stage.name,
                 start_month: stage.start_month,
                 end_month: stage.end_month,
+                start_date: stage.start_date,
+                end_date: stage.end_date,
                 description: stage.description,
                 [csrfParam]: csrfToken
             },
@@ -231,6 +274,82 @@ function attachEventHandlers() {
             },
             error: function() {
                 showNotification('Ошибка при сохранении этапа', 'danger');
+            }
+        });
+    });
+    
+    // Завершение этапа
+    $('.complete-stage-btn').off('click').on('click', function() {
+        var stageId = $(this).data('stage-id');
+        if (!stageId) return;
+        
+        $('#complete-stage-id').val(stageId);
+        $('#completion-format').val('');
+        var completeModal = new bootstrap.Modal(document.getElementById('completeStageModal'));
+        completeModal.show();
+    });
+    
+    // Подтверждение завершения этапа
+    $('#confirm-complete-stage-btn').off('click').on('click', function() {
+        var stageId = $('#complete-stage-id').val();
+        var completionFormat = $('#completion-format').val().trim();
+        
+        if (!stageId) {
+            showNotification('Ошибка: этап не выбран', 'danger');
+            return;
+        }
+        
+        if (!completionFormat) {
+            showNotification('Пожалуйста, укажите формат завершения', 'danger');
+            return;
+        }
+        
+        var confirmBtn = $(this);
+        var originalText = confirmBtn.text();
+        confirmBtn.prop('disabled', true).text('Сохранение...');
+        
+        $.ajax({
+            url: completeStageUrl,
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                id: stageId,
+                completion_format: completionFormat,
+                [csrfParam]: csrfToken
+            },
+            success: function(response) {
+                if (response && response.success) {
+                    // Обновляем этап в массиве
+                    var stageIndex = stages.findIndex(function(s) { return s.id === stageId; });
+                    if (stageIndex !== -1) {
+                        stages[stageIndex].is_completed = true;
+                        stages[stageIndex].completion_format = completionFormat;
+                    }
+                    
+                    // Закрываем модальное окно
+                    var completeModal = bootstrap.Modal.getInstance(document.getElementById('completeStageModal'));
+                    if (completeModal) {
+                        completeModal.hide();
+                    }
+                    
+                    // Перерисовываем этапы
+                    renderStages();
+                    
+                    showNotification('Этап успешно завершен!', 'success');
+                } else {
+                    var errorMsg = (response && response.message) ? response.message : 'Неизвестная ошибка';
+                    showNotification('Ошибка: ' + errorMsg, 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                var errorMsg = 'Ошибка при завершении этапа';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg += ': ' + xhr.responseJSON.message;
+                }
+                showNotification(errorMsg, 'danger');
+            },
+            complete: function() {
+                confirmBtn.prop('disabled', false).text(originalText);
             }
         });
     });
@@ -403,6 +522,8 @@ $(document).ready(function() {
             name: '',
             start_month: 0,
             end_month: 0,
+            start_date: '',
+            end_date: '',
             description: '',
             goals: []
         };
@@ -428,6 +549,32 @@ $this->registerJs($js);
         <div class="card-body">
             <div id="stages-container">
                 <!-- Этапы будут вставлены здесь через JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для завершения этапа -->
+    <div class="modal fade" id="completeStageModal" tabindex="-1" aria-labelledby="completeStageModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="completeStageModalLabel">Завершение этапа</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="complete-stage-form">
+                        <div class="mb-3">
+                            <label for="completion-format" class="form-label">Формат завершения</label>
+                            <textarea class="form-control" id="completion-format" rows="4" placeholder="Опишите формат завершения этапа..." required></textarea>
+                            <small class="form-text text-muted">Укажите, в каком формате завершен этап</small>
+                        </div>
+                        <input type="hidden" id="complete-stage-id" value="">
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-success" id="confirm-complete-stage-btn">Завершить</button>
+                </div>
             </div>
         </div>
     </div>

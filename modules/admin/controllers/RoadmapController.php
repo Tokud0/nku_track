@@ -169,6 +169,8 @@ class RoadmapController extends Controller
         $name = Yii::$app->request->post('name');
         $startMonth = (int)Yii::$app->request->post('start_month');
         $endMonth = (int)Yii::$app->request->post('end_month');
+        $startDate = Yii::$app->request->post('start_date', '');
+        $endDate = Yii::$app->request->post('end_date', '');
         $description = Yii::$app->request->post('description', '');
 
         if (!$roadmapId || !$name || $startMonth === null || $endMonth === null) {
@@ -194,6 +196,18 @@ class RoadmapController extends Controller
         $stage->start_month = $startMonth;
         $stage->end_month = $endMonth;
         $stage->description = $description;
+        
+        // Обработка дат
+        if (!empty($startDate)) {
+            $stage->start_date = new \MongoDB\BSON\UTCDateTime(strtotime($startDate) * 1000);
+        } else {
+            $stage->start_date = null;
+        }
+        if (!empty($endDate)) {
+            $stage->end_date = new \MongoDB\BSON\UTCDateTime(strtotime($endDate) * 1000);
+        } else {
+            $stage->end_date = null;
+        }
 
         if ($stage->save()) {
             return [
@@ -204,11 +218,62 @@ class RoadmapController extends Controller
                     'name' => $stage->name,
                     'start_month' => $stage->start_month,
                     'end_month' => $stage->end_month,
+                    'start_date' => $stage->start_date instanceof \MongoDB\BSON\UTCDateTime ? date('Y-m-d', $stage->start_date->toDateTime()->getTimestamp()) : '',
+                    'end_date' => $stage->end_date instanceof \MongoDB\BSON\UTCDateTime ? date('Y-m-d', $stage->end_date->toDateTime()->getTimestamp()) : '',
                     'description' => $stage->description,
                 ]
             ];
         } else {
             return ['success' => false, 'message' => 'Ошибка при сохранении: ' . implode(', ', $stage->getFirstErrors())];
+        }
+    }
+
+    /**
+     * Completes a stage via AJAX.
+     * @return array
+     */
+    public function actionCompleteStage()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        
+        try {
+            $id = Yii::$app->request->post('id');
+            $completionFormat = Yii::$app->request->post('completion_format', '');
+
+            if (!$id) {
+                return ['success' => false, 'message' => 'ID этапа не указан.'];
+            }
+
+            if (empty(trim($completionFormat))) {
+                return ['success' => false, 'message' => 'Необходимо указать формат завершения.'];
+            }
+            
+            $stage = RoadmapStage::findOne(['_id' => new \MongoDB\BSON\ObjectId($id)]);
+            if (!$stage) {
+                return ['success' => false, 'message' => 'Этап не найден.'];
+            }
+
+            // Устанавливаем завершение этапа
+            $stage->is_completed = true;
+            $stage->completion_format = trim($completionFormat);
+            $stage->completed_at = new \MongoDB\BSON\UTCDateTime();
+
+            if ($stage->save()) {
+                return [
+                    'success' => true,
+                    'message' => 'Этап успешно завершен.',
+                    'stage' => [
+                        'id' => (string)$stage->_id,
+                        'is_completed' => $stage->is_completed,
+                        'completion_format' => $stage->completion_format,
+                    ]
+                ];
+            } else {
+                $errors = $stage->getFirstErrors();
+                return ['success' => false, 'message' => 'Ошибка при сохранении: ' . (!empty($errors) ? implode(', ', $errors) : 'Неизвестная ошибка')];
+            }
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => 'Ошибка: ' . $e->getMessage()];
         }
     }
 
@@ -365,6 +430,43 @@ class RoadmapController extends Controller
         }
 
         return $this->redirect(['view', 'id' => $id]);
+    }
+
+    /**
+     * Saves roadmap start date via AJAX.
+     * @return array
+     */
+    public function actionSaveRoadmapDate()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        
+        $roadmapId = Yii::$app->request->post('roadmap_id');
+        $startDate = Yii::$app->request->post('start_date', '');
+
+        if (!$roadmapId) {
+            return ['success' => false, 'message' => 'ID дорожной карты не указан.'];
+        }
+        
+        $roadmap = Roadmap::findOne(['_id' => new \MongoDB\BSON\ObjectId($roadmapId)]);
+        if (!$roadmap) {
+            return ['success' => false, 'message' => 'Дорожная карта не найдена.'];
+        }
+
+        // Обработка даты
+        if (!empty($startDate)) {
+            $roadmap->start_date = new \MongoDB\BSON\UTCDateTime(strtotime($startDate) * 1000);
+        } else {
+            $roadmap->start_date = null;
+        }
+
+        if ($roadmap->save()) {
+            return [
+                'success' => true,
+                'message' => 'Дата начала дорожной карты успешно сохранена.',
+            ];
+        } else {
+            return ['success' => false, 'message' => 'Ошибка при сохранении: ' . implode(', ', $roadmap->getFirstErrors())];
+        }
     }
 }
 

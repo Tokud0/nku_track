@@ -46,13 +46,45 @@ $this->params['breadcrumbs'][] = $this->title;
                             <div class="card mb-4 stage-card">
                                 <div class="card-header bg-primary text-white">
                                     <div class="d-flex justify-content-between align-items-center">
-                                        <h5 class="mb-0"><?= Html::encode($stage->name) ?></h5>
-                                        <span class="badge bg-light text-dark">
-                                            <?= $stage->start_month ?> - <?= $stage->end_month ?> месяцев
-                                        </span>
+                                        <h5 class="mb-0">
+                                            <?= Html::encode($stage->name) ?>
+                                            <?php if (!empty($stage->is_completed)): ?>
+                                                <span class="badge bg-success ms-2">Завершен</span>
+                                            <?php endif; ?>
+                                        </h5>
+                                        <div class="text-end">
+                                            <span class="badge bg-light text-dark">
+                                                <?= $stage->start_month ?> - <?= $stage->end_month ?> месяцев
+                                            </span>
+                                            <?php if ($stage->start_date instanceof \MongoDB\BSON\UTCDateTime || $stage->end_date instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                                <div class="mt-1">
+                                                    <small class="text-white">
+                                                        <?php if ($stage->start_date instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                                            с <?= date('d.m.Y', $stage->start_date->toDateTime()->getTimestamp()) ?>
+                                                        <?php endif; ?>
+                                                        <?php if ($stage->end_date instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                                            по <?= date('d.m.Y', $stage->end_date->toDateTime()->getTimestamp()) ?>
+                                                        <?php endif; ?>
+                                                    </small>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="card-body">
+                                    <?php if (!empty($stage->is_completed) && !empty($stage->completion_format)): ?>
+                                        <div class="alert alert-success mb-3">
+                                            <strong><i class="fas fa-check-circle me-2"></i>Этап завершен</strong>
+                                            <p class="mb-0 mt-2"><strong>Формат завершения:</strong> <?= nl2br(Html::encode($stage->completion_format)) ?></p>
+                                            <?php if ($stage->completed_at instanceof \MongoDB\BSON\UTCDateTime): ?>
+                                                <small class="text-muted">
+                                                    <i class="far fa-calendar me-1"></i>
+                                                    Дата завершения: <?= date('d.m.Y', $stage->completed_at->toDateTime()->getTimestamp()) ?>
+                                                </small>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    
                                     <?php if ($stage->description): ?>
                                         <p class="card-text"><strong>Описание:</strong> <?= nl2br(Html::encode($stage->description)) ?></p>
                                     <?php endif; ?>

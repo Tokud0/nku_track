@@ -13,8 +13,13 @@ use Yii;
  * @property string $name название этапа
  * @property int $start_month начало этапа (месяц от начала, начиная с 0)
  * @property int $end_month конец этапа (месяц от начала, начиная с 0)
+ * @property \MongoDB\BSON\UTCDateTime|null $start_date конкретная дата начала этапа
+ * @property \MongoDB\BSON\UTCDateTime|null $end_date конкретная дата окончания этапа
  * @property string $description описание этапа
  * @property int $order порядок отображения
+ * @property bool $is_completed флаг завершения этапа
+ * @property string $completion_format формат завершения этапа (текстовое поле)
+ * @property \MongoDB\BSON\UTCDateTime|null $completed_at дата завершения этапа
  * @property \MongoDB\BSON\UTCDateTime $created_at
  * @property \MongoDB\BSON\UTCDateTime $updated_at
  */
@@ -39,8 +44,13 @@ class RoadmapStage extends ActiveRecord
             'name',
             'start_month',
             'end_month',
+            'start_date',
+            'end_date',
             'description',
             'order',
+            'is_completed',
+            'completion_format',
+            'completed_at',
             'created_at',
             'updated_at',
         ];
@@ -55,10 +65,11 @@ class RoadmapStage extends ActiveRecord
             [['roadmap_id', 'name', 'start_month', 'end_month'], 'required'],
             [['roadmap_id'], 'exist', 'targetClass' => Roadmap::class, 'targetAttribute' => '_id'],
             [['name'], 'string', 'max' => 255],
-            [['description'], 'string'],
+            [['description', 'completion_format'], 'string'],
             [['start_month', 'end_month', 'order'], 'integer', 'min' => 0],
             [['end_month'], 'compare', 'compareAttribute' => 'start_month', 'operator' => '>='],
-            [['created_at', 'updated_at'], 'safe'],
+            [['is_completed'], 'boolean'],
+            [['start_date', 'end_date', 'completed_at', 'created_at', 'updated_at'], 'safe'],
         ];
     }
 
@@ -73,8 +84,13 @@ class RoadmapStage extends ActiveRecord
             'name' => 'Название этапа',
             'start_month' => 'Начало (месяц)',
             'end_month' => 'Конец (месяц)',
+            'start_date' => 'Дата начала',
+            'end_date' => 'Дата окончания',
             'description' => 'Описание этапа',
             'order' => 'Порядок',
+            'is_completed' => 'Завершен',
+            'completion_format' => 'Формат завершения',
+            'completed_at' => 'Дата завершения',
             'created_at' => 'Дата создания',
             'updated_at' => 'Дата обновления',
         ];
@@ -130,6 +146,16 @@ class RoadmapStage extends ActiveRecord
     public function getTimeRange()
     {
         return "от {$this->start_month} до {$this->end_month} месяцев";
+    }
+
+    /**
+     * Проверяет, завершен ли этап
+     *
+     * @return bool
+     */
+    public function isCompleted()
+    {
+        return !empty($this->is_completed);
     }
 }
 
