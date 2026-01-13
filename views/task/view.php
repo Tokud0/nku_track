@@ -46,26 +46,32 @@ $comments = Comment::find()
                     </div>
                     <p class="text-muted mb-0">
                         <i class="fas fa-project-diagram me-2"></i>
-                        <?= Html::a(
-                            Html::encode($model->project->title),
-                            ['project/view', 'id' => (string)$model->project_id],
-                            ['class' => 'text-decoration-none']
-                        ) ?>
+                        <?php if ($model->project): ?>
+                            <?= Html::a(
+                                Html::encode($model->project->title),
+                                ['project/view', 'id' => (string)$model->project_id],
+                                ['class' => 'text-decoration-none']
+                            ) ?>
+                        <?php else: ?>
+                            <span class="text-danger">Проект удален</span>
+                        <?php endif; ?>
                     </p>
                 </div>
                 <div class="text-end">
-                    <div class="d-flex gap-2 mb-2">
-                        <?= Html::a(
-                            '<i class="fas fa-columns me-2"></i>К доске',
-                            ['project/kanban', 'id' => (string)$model->project_id],
-                            ['class' => 'nku-btn nku-btn--info nku-btn--outline']
-                        ) ?>
-                        <?= Html::a(
-                            '<i class="fas fa-arrow-left me-2"></i>К проекту',
-                            ['project/view', 'id' => (string)$model->project_id],
-                            ['class' => 'nku-btn nku-btn--secondary']
-                        ) ?>
-                    </div>
+                    <?php if ($model->project): ?>
+                        <div class="d-flex gap-2 mb-2">
+                            <?= Html::a(
+                                '<i class="fas fa-columns me-2"></i>К доске',
+                                ['project/kanban', 'id' => (string)$model->project_id],
+                                ['class' => 'nku-btn nku-btn--info nku-btn--outline']
+                            ) ?>
+                            <?= Html::a(
+                                '<i class="fas fa-arrow-left me-2"></i>К проекту',
+                                ['project/view', 'id' => (string)$model->project_id],
+                                ['class' => 'nku-btn nku-btn--secondary']
+                            ) ?>
+                        </div>
+                    <?php endif; ?>
                     <?php if ($canEditTask): ?>
                         <div class="d-flex gap-2">
                             <?= Html::a(

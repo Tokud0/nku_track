@@ -44,9 +44,8 @@ class Roadmap extends ActiveRecord
     public function rules()
     {
         return [
-            [['department_id'], 'required'],
-            [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id'],
-            [['department_id'], 'unique', 'message' => 'Дорожная карта для этого подразделения уже существует.'],
+            [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
+            [['department_id'], 'unique', 'message' => 'Дорожная карта для этого подразделения уже существует.', 'skipOnEmpty' => true],
             [['start_date', 'created_at', 'updated_at'], 'safe'],
         ];
     }
@@ -98,6 +97,16 @@ class Roadmap extends ActiveRecord
     public function getStages()
     {
         return $this->hasMany(RoadmapStage::class, ['roadmap_id' => '_id'])->orderBy(['start_month' => SORT_ASC]);
+    }
+
+    /**
+     * Проверяет, является ли дорожная карта глобальной (без привязки к департаменту)
+     *
+     * @return bool
+     */
+    public function isGlobal()
+    {
+        return $this->department_id === null;
     }
 }
 

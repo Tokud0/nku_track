@@ -76,9 +76,9 @@ class Project extends ActiveRecord
     public function rules()
     {
         return [
-            [['title', 'manager_id', 'status', 'department_id'], 'required'],
+            [['title', 'manager_id', 'status'], 'required'],
             [['title', 'description', 'goals', 'status'], 'string'],
-            [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id'],
+            [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
             [['status'], 'in', 'range' => [
                 self::STATUS_DRAFT,
                 self::STATUS_ACTIVE,
@@ -207,6 +207,16 @@ class Project extends ActiveRecord
     public function getDepartment()
     {
         return $this->hasOne(Department::class, ['_id' => 'department_id']);
+    }
+
+    /**
+     * Проверяет, является ли проект глобальным (без привязки к департаменту)
+     *
+     * @return bool
+     */
+    public function isGlobal()
+    {
+        return $this->department_id === null;
     }
 
     /**

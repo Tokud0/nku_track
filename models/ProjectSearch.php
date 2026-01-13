@@ -43,6 +43,9 @@ class ProjectSearch extends Project
     {
         $query = Project::find();
 
+        // Исключаем глобальные проекты (проекты без подразделения)
+        $query->andWhere(['department_id' => ['$ne' => null]]);
+
         // Фильтр по менеджеру
         if ($managerId) {
             $query->andWhere(['manager_id' => $managerId]);

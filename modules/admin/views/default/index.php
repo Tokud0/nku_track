@@ -98,6 +98,18 @@ $this->params['breadcrumbs'][] = $this->title;
                     </div>
                 </div>
                 
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="glyphicon glyphicon-globe"></i> Роли в глобальном проекте
+                            </h5>
+                            <p class="card-text">Назначение ролей пользователям в глобальном проекте университета.</p>
+                            <?= Html::a('Перейти к управлению', ['global-project-role/index'], ['class' => 'btn btn-primary']) ?>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Здесь можно добавить другие действия в будущем -->
                 <!--
                 <div class="col-md-4 mb-3">

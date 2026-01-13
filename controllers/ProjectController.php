@@ -275,6 +275,9 @@ class ProjectController extends Controller
             return $this->redirect(['view', 'id' => $id]);
         }
         
+        // Удаляем все задачи, связанные с проектом
+        Task::deleteAll(['project_id' => $model->_id]);
+        
         $model->delete();
         Yii::$app->session->setFlash('success', 'Проект успешно удален.');
 

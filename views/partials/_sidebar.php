@@ -49,6 +49,10 @@ $brandUrl = Yii::$app->homeUrl;
                 <i class="fas fa-project-diagram" aria-hidden="true"></i> <span>Проекты</span>
             </a>
 
+            <a class="nku-nav__item <?= $isActive('global-project') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/global-project/index'])) ?>">
+                <i class="fas fa-globe" aria-hidden="true"></i> <span>Глобальный проект</span>
+            </a>
+
             <?php if ($user && in_array($user->role, [\app\models\User::ROLE_HEAD, \app\models\User::ROLE_TOP_MANAGER], true)): ?>
                 <a class="nku-nav__item <?= $isActive('roadmap') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/roadmap/index'])) ?>">
                     <i class="fas fa-road" aria-hidden="true"></i> <span>Дорожная карта</span>

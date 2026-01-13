@@ -6,6 +6,7 @@ use Yii;
 use app\models\Task;
 use app\models\Project;
 use app\models\User;
+use app\models\GlobalProjectRole;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
 use yii\filters\VerbFilter;
@@ -57,18 +58,32 @@ class TaskController extends Controller
 
         $user = Yii::$app->user->identity;
         
-        // Руководитель, топ-менеджер, менеджер и админ могут создавать задачи
-        if (!in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER, User::ROLE_ADMIN])) {
-            Yii::$app->session->setFlash('error', 'У вас нет прав для создания задач.');
-            return $this->redirect(['project/view', 'id' => $project_id]);
-        }
+        // Проверяем, является ли проект глобальным
+        $isGlobalProject = $project->isGlobal();
         
-        // Проверяем доступ к проекту (по подразделению)
-        if ($user->role !== User::ROLE_ADMIN) {
-            if (!$project->department_id || !$user->department_id || 
-                (string)$project->department_id !== (string)$user->department_id) {
-                Yii::$app->session->setFlash('error', 'Вы не можете создавать задачи для проектов других подразделений.');
+        // Для глобального проекта проверяем роль в глобальном проекте
+        if ($isGlobalProject) {
+            $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
+            if ($user->role !== User::ROLE_ADMIN && 
+                $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
+                $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+                Yii::$app->session->setFlash('error', 'У вас нет прав для создания задач в глобальном проекте.');
+                return $this->redirect(['global-project/view', 'id' => $project_id]);
+            }
+        } else {
+            // Для обычных проектов: руководитель, топ-менеджер, менеджер и админ могут создавать задачи
+            if (!in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER, User::ROLE_ADMIN])) {
+                Yii::$app->session->setFlash('error', 'У вас нет прав для создания задач.');
                 return $this->redirect(['project/view', 'id' => $project_id]);
+            }
+            
+            // Проверяем доступ к проекту (по подразделению)
+            if ($user->role !== User::ROLE_ADMIN) {
+                if (!$project->department_id || !$user->department_id || 
+                    (string)$project->department_id !== (string)$user->department_id) {
+                    Yii::$app->session->setFlash('error', 'Вы не можете создавать задачи для проектов других подразделений.');
+                    return $this->redirect(['project/view', 'id' => $project_id]);
+                }
             }
         }
 
@@ -140,7 +155,12 @@ class TaskController extends Controller
             if ($model->validate()) {
                 if ($model->save(false)) { // false - чтобы не валидировать повторно
                     Yii::$app->session->setFlash('success', 'Задача успешно создана.');
-                    return $this->redirect(['project/view', 'id' => $project_id]);
+                    // Редирект зависит от типа проекта
+                    if ($isGlobalProject) {
+                        return $this->redirect(['global-project/view', 'id' => $project_id]);
+                    } else {
+                        return $this->redirect(['project/view', 'id' => $project_id]);
+                    }
                 } else {
                     Yii::$app->session->setFlash('error', 'Ошибка при сохранении задачи.');
                 }
@@ -158,6 +178,7 @@ class TaskController extends Controller
         return $this->render('create', [
             'model' => $model,
             'project' => $project,
+            'isGlobalProject' => $isGlobalProject,
         ]);
     }
 
@@ -252,7 +273,12 @@ class TaskController extends Controller
             
             if ($model->save()) {
                 Yii::$app->session->setFlash('success', 'Задача успешно обновлена.');
-                return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
+                // Редирект зависит от типа проекта
+                if ($model->project->isGlobal()) {
+                    return $this->redirect(['global-project/view', 'id' => (string)$model->project_id]);
+                } else {
+                    return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
+                }
             }
         }
 
@@ -273,27 +299,45 @@ class TaskController extends Controller
     {
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
+        $isGlobalProject = $model->project->isGlobal();
         
-        // Руководитель, топ-менеджер, менеджер и админ могут удалять задачи
-        if (!in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER, User::ROLE_ADMIN])) {
-            Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи.');
-            return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
-        }
-        
-        // Проверяем доступ к проекту (по подразделению)
-        if ($user->role !== User::ROLE_ADMIN) {
-            if (!$model->project->department_id || !$user->department_id || 
-                (string)$model->project->department_id !== (string)$user->department_id) {
-                Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи проектов других подразделений.');
+        // Для глобального проекта проверяем роль в глобальном проекте
+        if ($isGlobalProject) {
+            $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
+            if ($user->role !== User::ROLE_ADMIN && 
+                $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
+                $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+                Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи в глобальном проекте.');
+                return $this->redirect(['global-project/view', 'id' => (string)$model->project_id]);
+            }
+        } else {
+            // Руководитель, топ-менеджер, менеджер и админ могут удалять задачи
+            if (!in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER, User::ROLE_MANAGER, User::ROLE_ADMIN])) {
+                Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи.');
                 return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
+            }
+            
+            // Проверяем доступ к проекту (по подразделению)
+            if ($user->role !== User::ROLE_ADMIN) {
+                if (!$model->project->department_id || !$user->department_id || 
+                    (string)$model->project->department_id !== (string)$user->department_id) {
+                    Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи проектов других подразделений.');
+                    return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
+                }
             }
         }
         
         $projectId = (string)$model->project_id;
+        $isGlobal = $model->project->isGlobal();
         $model->delete();
         Yii::$app->session->setFlash('success', 'Задача успешно удалена.');
 
-        return $this->redirect(['project/view', 'id' => $projectId]);
+        // Редирект зависит от типа проекта
+        if ($isGlobal) {
+            return $this->redirect(['global-project/view', 'id' => $projectId]);
+        } else {
+            return $this->redirect(['project/view', 'id' => $projectId]);
+        }
     }
 
     /**
@@ -569,25 +613,37 @@ class TaskController extends Controller
             return;
         }
         
-        // Руководитель может редактировать задачи проектов своего подразделения
-        if ($user->role === User::ROLE_HEAD && 
-            $model->project && $model->project->department_id && $user->department_id &&
-            (string)$model->project->department_id === (string)$user->department_id) {
-            return;
-        }
+        // Проверяем, является ли проект глобальным
+        $isGlobalProject = $model->project && $model->project->isGlobal();
         
-        // Топ-менеджер может редактировать задачи проектов своего подразделения
-        if ($user->role === User::ROLE_TOP_MANAGER && 
-            $model->project && $model->project->department_id && $user->department_id &&
-            (string)$model->project->department_id === (string)$user->department_id) {
-            return;
-        }
-        
-        // Менеджер может редактировать задачи проектов своего подразделения
-        if ($user->role === User::ROLE_MANAGER && 
-            $model->project && $model->project->department_id && $user->department_id &&
-            (string)$model->project->department_id === (string)$user->department_id) {
-            return;
+        if ($isGlobalProject) {
+            // Для глобального проекта проверяем роль в глобальном проекте
+            $userGlobalRole = \app\models\GlobalProjectRole::getUserRole($user->_id);
+            if ($userGlobalRole === \app\models\GlobalProjectRole::ROLE_RECTOR || 
+                $userGlobalRole === \app\models\GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+                return;
+            }
+        } else {
+            // Руководитель может редактировать задачи проектов своего подразделения
+            if ($user->role === User::ROLE_HEAD && 
+                $model->project && $model->project->department_id && $user->department_id &&
+                (string)$model->project->department_id === (string)$user->department_id) {
+                return;
+            }
+            
+            // Топ-менеджер может редактировать задачи проектов своего подразделения
+            if ($user->role === User::ROLE_TOP_MANAGER && 
+                $model->project && $model->project->department_id && $user->department_id &&
+                (string)$model->project->department_id === (string)$user->department_id) {
+                return;
+            }
+            
+            // Менеджер может редактировать задачи проектов своего подразделения
+            if ($user->role === User::ROLE_MANAGER && 
+                $model->project && $model->project->department_id && $user->department_id &&
+                (string)$model->project->department_id === (string)$user->department_id) {
+                return;
+            }
         }
         
         // Исполнитель может редактировать только свои задачи (статус, прогресс, описание)

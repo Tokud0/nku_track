@@ -325,6 +325,11 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                         <div class="list-group list-group-flush">
                             <?php foreach ($tasksToShow as $task): ?>
                                 <?php if (!$task || !$task->title): continue; endif; ?>
+                                <?php 
+                                // Пропускаем задачи с удаленными проектами
+                                $project = $task->project;
+                                if (!$project): continue; endif;
+                                ?>
                                 <div class="list-group-item px-0 border-bottom">
                                     <div class="d-flex justify-content-between align-items-start">
                                         <div class="flex-grow-1">
@@ -335,7 +340,6 @@ $currentRole = $roleLabels[$user->role] ?? ['label' => $user->role, 'icon' => 'f
                                             ) ?>
                                             <div class="d-flex align-items-center gap-2 mt-1">
                                                 <?php 
-                                                $project = $task->project;
                                                 if ($project && $project->title): 
                                                 ?>
                                                     <small class="text-muted">
