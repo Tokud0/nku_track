@@ -58,9 +58,11 @@ class GlobalRoadmapController extends Controller
             // Если глобальной дорожной карты нет, создаем ее
             $user = Yii::$app->user->identity;
             
-            // Только админ или ректор в глобальном проекте может создать глобальную дорожную карту
+            // Только админ, ректор или глобальный менеджер может создать глобальную дорожную карту
             $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
-            if ($user->role !== User::ROLE_ADMIN && $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR) {
+            if ($user->role !== User::ROLE_ADMIN && 
+                $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
+                $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
                 Yii::$app->session->setFlash('error', 'У вас нет прав для создания глобальной дорожной карты.');
                 return $this->redirect(['/global-project/index']);
             }
@@ -141,6 +143,15 @@ class GlobalRoadmapController extends Controller
         $roadmap = Roadmap::findOne(['_id' => new \MongoDB\BSON\ObjectId($roadmapId)]);
         if (!$roadmap || !$roadmap->isGlobal()) {
             return ['success' => false, 'message' => 'Глобальная дорожная карта не найдена.'];
+        }
+        
+        // Проверяем права доступа: только глобальные менеджеры, ректор и админ могут создавать/редактировать дорожные карты
+        $user = Yii::$app->user->identity;
+        $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
+        if ($user->role !== User::ROLE_ADMIN && 
+            $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
+            $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            return ['success' => false, 'message' => 'У вас нет прав для создания/редактирования дорожных карт.'];
         }
 
         if ($id) {
@@ -261,6 +272,16 @@ class GlobalRoadmapController extends Controller
         if (!$roadmap || !$roadmap->isGlobal()) {
             throw new NotFoundHttpException('Этап не принадлежит глобальной дорожной карте.');
         }
+        
+        // Проверяем права доступа: только глобальные менеджеры, ректор и админ могут удалять дорожные карты
+        $user = Yii::$app->user->identity;
+        $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
+        if ($user->role !== User::ROLE_ADMIN && 
+            $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
+            $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            Yii::$app->session->setFlash('error', 'У вас нет прав для удаления дорожных карт.');
+            return $this->redirect(['view']);
+        }
 
         // Удаляем все цели этапа
         RoadmapStageGoal::deleteAll(['stage_id' => $stage->_id]);
@@ -286,6 +307,15 @@ class GlobalRoadmapController extends Controller
 
         if (!$stageId || !$title) {
             return ['success' => false, 'message' => 'Не все обязательные поля заполнены.'];
+        }
+        
+        // Проверяем права доступа: только глобальные менеджеры, ректор и админ могут создавать/редактировать цели
+        $user = Yii::$app->user->identity;
+        $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
+        if ($user->role !== User::ROLE_ADMIN && 
+            $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
+            $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            return ['success' => false, 'message' => 'У вас нет прав для создания/редактирования целей дорожных карт.'];
         }
 
         $stage = RoadmapStage::findOne(['_id' => new \MongoDB\BSON\ObjectId($stageId)]);

@@ -66,6 +66,11 @@ $config = [
                 'project/<id:[a-f0-9]{24}>' => 'project/view',
                 'project/<action:\w+>' => 'project/<action>',
                 'project/<action:\w+>/<id:[a-f0-9]{24}>' => 'project/<action>',
+                // Правила для глобального проекта
+                'global-project/<id:[a-f0-9]{24}>/kanban' => 'global-project/kanban',
+                'global-project/<id:[a-f0-9]{24}>' => 'global-project/view',
+                'global-project/<action:\w+>' => 'global-project/<action>',
+                'global-project/<action:\w+>/<id:[a-f0-9]{24}>' => 'global-project/<action>',
                 // Правила для ТЗ
                 'project-spec/toggle-milestone/<project_id:[a-f0-9]{24}>' => 'project-spec/toggle-milestone',
                 'project-spec/<action:\w+>/<project_id:[a-f0-9]{24}>' => 'project-spec/<action>',

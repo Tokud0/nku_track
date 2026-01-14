@@ -432,6 +432,12 @@ class ProjectController extends Controller
             return;
         }
         
+        // Проверяем, является ли проект глобальным
+        if ($model->isGlobal()) {
+            // В глобальных проектах все пользователи имеют доступ по умолчанию
+            return;
+        }
+        
         // Ректор имеет доступ ко всем проектам (только просмотр)
         if ($user->role === User::ROLE_RECTOR) {
             return;

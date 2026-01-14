@@ -10,8 +10,17 @@ use app\models\User;
 /** @var app\models\Project $model */
 
 $this->title = 'Канбан-доска: ' . $model->title;
-$this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['project/index']];
-$this->params['breadcrumbs'][] = ['label' => $model->title, 'url' => ['project/view', 'id' => (string)$model->_id]];
+
+// Проверяем, является ли проект глобальным
+$isGlobalProject = $model->isGlobal();
+
+if ($isGlobalProject) {
+    $this->params['breadcrumbs'][] = ['label' => 'Глобальный проект', 'url' => ['global-project/index']];
+    $this->params['breadcrumbs'][] = ['label' => $model->title, 'url' => ['global-project/view', 'id' => (string)$model->_id]];
+} else {
+    $this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['project/index']];
+    $this->params['breadcrumbs'][] = ['label' => $model->title, 'url' => ['project/view', 'id' => (string)$model->_id]];
+}
 $this->params['breadcrumbs'][] = 'Канбан-доска';
 
 $user = Yii::$app->user->identity;
@@ -133,13 +142,14 @@ $currentRoleInfo = $roleInfo[$user->role] ?? ['label' => $user->role, 'icon' => 
             <?php endif; ?>
             <?= Html::a(
                 '<i class="fas fa-arrow-left me-2"></i>К проекту',
-                ['project/view', 'id' => (string)$model->_id],
+                $isGlobalProject ? ['global-project/view', 'id' => (string)$model->_id] : ['project/view', 'id' => (string)$model->_id],
                 ['class' => 'nku-btn nku-btn--secondary']
             ) ?>
         </div>
     </div>
 
-    <!-- Баннер "Ваши права" -->
+    <!-- Баннер "Ваши права" (только для обычных проектов) -->
+    <?php if (!$isGlobalProject): ?>
     <div class="nku-card mb-4">
         <div class="nku-card__body py-3">
             <div class="d-flex align-items-center justify-content-between">
@@ -179,6 +189,7 @@ $currentRoleInfo = $roleInfo[$user->role] ?? ['label' => $user->role, 'icon' => 
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Баннер для readonly режима ректора -->
     <?php if ($isRectorReadonly): ?>

@@ -39,13 +39,39 @@ if ($user->role === User::ROLE_ADMIN) {
 
 
 // Получение задач (исключаем архивные)
-$tasks = Task::find()
+$tasksQuery = Task::find()
     ->where(['project_id' => $model->_id])
     ->andWhere(['$or' => [
         ['is_archived' => false],
         ['is_archived' => ['$exists' => false]],
-    ]])
-    ->all();
+    ]]);
+
+// Фильтруем задачи по видимости: глобальные менеджеры и ректор видят все задачи, остальные - только свои
+if ($user->role !== User::ROLE_ADMIN && 
+    $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
+    $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+    // Пользователь видит только задачи, на которые он назначен
+    $allTasks = Task::find()
+        ->where(['project_id' => $model->_id])
+        ->andWhere(['$or' => [
+            ['is_archived' => false],
+            ['is_archived' => ['$exists' => false]],
+        ]])
+        ->all();
+    $visibleTaskIds = [];
+    foreach ($allTasks as $task) {
+        if ($task->isAssignedToUser($user)) {
+            $visibleTaskIds[] = $task->_id;
+        }
+    }
+    if (!empty($visibleTaskIds)) {
+        $tasksQuery->andWhere(['_id' => ['$in' => $visibleTaskIds]]);
+    } else {
+        $tasksQuery->andWhere(['_id' => ['$in' => []]]); // Пустой результат
+    }
+}
+
+$tasks = $tasksQuery->all();
 $tasksCount = count($tasks);
 $tasksByStatus = [
     Task::STATUS_TODO => 0,
@@ -75,9 +101,24 @@ foreach ($tasks as $task) {
                     <p class="text-muted mb-0">
                         <i class="fas fa-globe me-2"></i>
                         Глобальный проект для всего университета
-                        <span class="mx-2">•</span>
-                        <i class="fas fa-user-tie me-2"></i>
-                        <?= $model->manager ? Html::encode($model->manager->fio) : 'Без руководителя' ?>
+                        <?php
+                        $managers = $model->getManagers();
+                        if (!empty($managers)):
+                        ?>
+                            <span class="mx-2">•</span>
+                            <i class="fas fa-user-tie me-2"></i>
+                            <?php
+                            $managerNames = [];
+                            foreach ($managers as $manager) {
+                                $managerNames[] = Html::encode($manager->fio);
+                            }
+                            echo implode(', ', $managerNames);
+                            ?>
+                        <?php else: ?>
+                            <span class="mx-2">•</span>
+                            <i class="fas fa-user-tie me-2"></i>
+                            Без руководителей
+                        <?php endif; ?>
                     </p>
                 </div>
                 <div class="text-end">
@@ -263,10 +304,15 @@ foreach ($tasks as $task) {
                             </div>
                         </div>
 
-                        <div class="text-center">
+                        <div class="text-center d-flex gap-3 justify-content-center">
                             <?= Html::a(
-                                '<i class="fas fa-columns me-2"></i>Перейти к канбан-доске для управления задачами',
-                                ['project/kanban', 'id' => (string)$model->_id],
+                                '<i class="fas fa-list me-2"></i>Список задач',
+                                ['global-project/tasks-list', 'id' => (string)$model->_id],
+                                ['class' => 'nku-btn nku-btn--lg nku-btn--info']
+                            ) ?>
+                            <?= Html::a(
+                                '<i class="fas fa-columns me-2"></i>Канбан-доска',
+                                ['global-project/kanban', 'id' => (string)$model->_id],
                                 ['class' => 'nku-btn nku-btn--lg nku-btn--primary']
                             ) ?>
                         </div>
@@ -326,3 +372,36 @@ foreach ($tasks as $task) {
 }
 </style>
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Проверяем наличие якоря #tasks в URL
+    if (window.location.hash === '#tasks') {
+        // Находим кнопку вкладки "Задачи" и активируем её
+        var tasksTab = document.getElementById('tasks-tab');
+        var tasksPane = document.getElementById('tasks');
+        
+        if (tasksTab && tasksPane) {
+            // Убираем активное состояние с других вкладок
+            var allTabs = document.querySelectorAll('.nav-link');
+            var allPanes = document.querySelectorAll('.tab-pane');
+            
+            allTabs.forEach(function(tab) {
+                tab.classList.remove('active');
+                tab.setAttribute('aria-selected', 'false');
+            });
+            
+            allPanes.forEach(function(pane) {
+                pane.classList.remove('show', 'active');
+            });
+            
+            // Активируем вкладку "Задачи"
+            tasksTab.classList.add('active');
+            tasksTab.setAttribute('aria-selected', 'true');
+            tasksPane.classList.add('show', 'active');
+            
+            // Прокручиваем к вкладке
+            tasksTab.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+});
+</script>

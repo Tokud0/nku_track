@@ -20,6 +20,8 @@ use app\models\Department;
  * @property \MongoDB\BSON\ObjectId|null $executor_user_from_department_id пользователь из подразделения
  * @property \MongoDB\BSON\ObjectId|null $executor_subdepartment_id департамент из подразделения
  * @property \MongoDB\BSON\ObjectId|null $executor_user_from_subdepartment_id пользователь из департамента
+ * @property array|null $executor_user_ids массив ObjectId исполнителей (для глобальных проектов)
+ * @property \MongoDB\BSON\ObjectId|null $responsible_user_id ответственный (глобальный менеджер для глобальных проектов)
  * @property \MongoDB\BSON\ObjectId $creator_id кто создал (руководитель)
  * @property \MongoDB\BSON\UTCDateTime|null $start_date
  * @property \MongoDB\BSON\UTCDateTime|null $due_date
@@ -66,6 +68,8 @@ class Task extends ActiveRecord
             'executor_user_from_department_id',
             'executor_subdepartment_id',
             'executor_user_from_subdepartment_id',
+            'executor_user_ids',
+            'responsible_user_id',
             'creator_id',
             'start_date',
             'due_date',
@@ -101,7 +105,7 @@ class Task extends ActiveRecord
             ]],
             [['progress'], 'integer', 'min' => 0, 'max' => 100],
             [['executor_user_from_department_id', 'executor_subdepartment_id', 'executor_user_from_subdepartment_id'], 'validateExecutor'],
-            [['attachments', 'subtasks'], 'safe'],
+            [['executor_user_ids', 'attachments', 'subtasks', 'responsible_user_id'], 'safe'],
             [['is_archived'], 'boolean'],
             [['is_archived'], 'default', 'value' => false],
             [['start_date', 'due_date', 'created_at', 'updated_at'], 'safe'],
@@ -124,6 +128,7 @@ class Task extends ActiveRecord
             'executor_user_from_department_id' => 'Исполнитель (из подразделения)',
             'executor_subdepartment_id' => 'Исполнитель (департамент)',
             'executor_user_from_subdepartment_id' => 'Исполнитель (из департамента)',
+            'responsible_user_id' => 'Ответственный',
             'creator_id' => 'Создатель',
             'start_date' => 'Дата начала',
             'due_date' => 'Срок выполнения',
@@ -173,6 +178,34 @@ class Task extends ActiveRecord
                 $this->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($this->executor_user_from_subdepartment_id);
             }
             
+            // Обрабатываем множественных исполнителей для глобальных проектов
+            if ($this->executor_user_ids && is_array($this->executor_user_ids)) {
+                $processedIds = [];
+                foreach ($this->executor_user_ids as $userId) {
+                    if (is_string($userId) && preg_match('/^[0-9a-fA-F]{24}$/', $userId)) {
+                        try {
+                            $processedIds[] = new \MongoDB\BSON\ObjectId($userId);
+                        } catch (\Exception $e) {
+                            // Пропускаем невалидные ID
+                        }
+                    } elseif ($userId instanceof \MongoDB\BSON\ObjectId) {
+                        $processedIds[] = $userId;
+                    }
+                }
+                $this->executor_user_ids = $processedIds;
+            } else            if (empty($this->executor_user_ids)) {
+                $this->executor_user_ids = null;
+            }
+            
+            // Преобразуем responsible_user_id в ObjectId если это строка
+            if (!empty($this->responsible_user_id) && is_string($this->responsible_user_id)) {
+                try {
+                    $this->responsible_user_id = new \MongoDB\BSON\ObjectId($this->responsible_user_id);
+                } catch (\Exception $e) {
+                    $this->responsible_user_id = null;
+                }
+            }
+            
             // Автоматически рассчитываем прогресс на основе подзадач
             $total = $this->getTotalSubtasksCount();
             if ($total > 0) {
@@ -195,6 +228,9 @@ class Task extends ActiveRecord
                 }
                 if ($this->subtasks === null) {
                     $this->subtasks = [];
+                }
+                if ($this->executor_user_ids === null) {
+                    $this->executor_user_ids = null;
                 }
                 if ($this->is_archived === null) {
                     $this->is_archived = false;
@@ -247,6 +283,16 @@ class Task extends ActiveRecord
     }
 
     /**
+     * Gets responsible user (global manager for global projects)
+     *
+     * @return \yii\mongodb\ActiveQuery
+     */
+    public function getResponsibleUser()
+    {
+        return $this->hasOne(User::class, ['_id' => 'responsible_user_id']);
+    }
+
+    /**
      * Gets all users that should see this task
      *
      * @return array массив User моделей
@@ -254,6 +300,28 @@ class Task extends ActiveRecord
     public function getAssignedUsers()
     {
         $users = [];
+        
+        // Для глобальных проектов: множественные исполнители
+        if ($this->executor_user_ids && is_array($this->executor_user_ids) && !empty($this->executor_user_ids)) {
+            $userIds = [];
+            foreach ($this->executor_user_ids as $userId) {
+                if (is_string($userId)) {
+                    try {
+                        $userIds[] = new \MongoDB\BSON\ObjectId($userId);
+                    } catch (\Exception $e) {
+                        // Пропускаем невалидные ID
+                    }
+                } elseif ($userId instanceof \MongoDB\BSON\ObjectId) {
+                    $userIds[] = $userId;
+                }
+            }
+            if (!empty($userIds)) {
+                $globalUsers = User::find()
+                    ->where(['_id' => ['$in' => $userIds]])
+                    ->all();
+                $users = array_merge($users, $globalUsers);
+            }
+        }
         
         // Если назначен пользователь из подразделения
         if ($this->executor_user_from_department_id) {

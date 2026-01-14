@@ -10,8 +10,17 @@ use app\models\Comment;
 /** @var app\models\Task $model */
 
 $this->title = $model->title;
-$this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['project/index']];
-$this->params['breadcrumbs'][] = ['label' => $model->project->title, 'url' => ['project/view', 'id' => (string)$model->project_id]];
+
+// Проверяем, является ли проект глобальным
+$isGlobalProject = $model->project && $model->project->isGlobal();
+
+if ($isGlobalProject) {
+    $this->params['breadcrumbs'][] = ['label' => 'Глобальный проект', 'url' => ['global-project/index']];
+    $this->params['breadcrumbs'][] = ['label' => $model->project->title, 'url' => ['global-project/view', 'id' => (string)$model->project_id]];
+} else {
+    $this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['project/index']];
+    $this->params['breadcrumbs'][] = ['label' => $model->project->title, 'url' => ['project/view', 'id' => (string)$model->project_id]];
+}
 $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
@@ -49,7 +58,7 @@ $comments = Comment::find()
                         <?php if ($model->project): ?>
                             <?= Html::a(
                                 Html::encode($model->project->title),
-                                ['project/view', 'id' => (string)$model->project_id],
+                                $isGlobalProject ? ['global-project/view', 'id' => (string)$model->project_id] : ['project/view', 'id' => (string)$model->project_id],
                                 ['class' => 'text-decoration-none']
                             ) ?>
                         <?php else: ?>
@@ -62,12 +71,12 @@ $comments = Comment::find()
                         <div class="d-flex gap-2 mb-2">
                             <?= Html::a(
                                 '<i class="fas fa-columns me-2"></i>К доске',
-                                ['project/kanban', 'id' => (string)$model->project_id],
+                                $isGlobalProject ? ['global-project/kanban', 'id' => (string)$model->project_id] : ['project/kanban', 'id' => (string)$model->project_id],
                                 ['class' => 'nku-btn nku-btn--info nku-btn--outline']
                             ) ?>
                             <?= Html::a(
                                 '<i class="fas fa-arrow-left me-2"></i>К проекту',
-                                ['project/view', 'id' => (string)$model->project_id],
+                                $isGlobalProject ? ['global-project/view', 'id' => (string)$model->project_id] : ['project/view', 'id' => (string)$model->project_id],
                                 ['class' => 'nku-btn nku-btn--secondary']
                             ) ?>
                         </div>
@@ -294,6 +303,21 @@ $comments = Comment::find()
                                 </div>
                             </div>
                         </div>
+                        <?php if ($isGlobalProject && $model->responsible_user_id): ?>
+                            <?php $responsibleUser = $model->responsibleUser; ?>
+                            <div class="col-md-6 mb-3">
+                                <label class="text-muted mb-1">Ответственный</label>
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-user-tie text-info me-2" style="font-size: 1.5rem;"></i>
+                                    <div>
+                                        <div class="fw-semibold"><?= Html::encode($responsibleUser ? ($responsibleUser->fio . ' (' . $responsibleUser->email . ')') : 'Не указан') ?></div>
+                                        <?php if ($responsibleUser): ?>
+                                            <small class="text-muted">Глобальный менеджер</small>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                         <div class="col-md-6 mb-3">
                             <label class="text-muted mb-1">Создатель</label>
                             <div class="d-flex align-items-center">

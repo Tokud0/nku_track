@@ -98,6 +98,18 @@ class TaskController extends Controller
         $model->progress = 0;
         $model->attachments = [];
 
+        // Обрабатываем executor_user_ids до load(), чтобы избежать ошибки "Array to string conversion"
+        $executorUserIdsData = null;
+        if ($isGlobalProject && !empty($_POST['Task']['executor_user_ids'])) {
+            $executorIdsJson = $_POST['Task']['executor_user_ids'];
+            $executorIds = json_decode($executorIdsJson, true);
+            if (is_array($executorIds) && !empty($executorIds)) {
+                $executorUserIdsData = $executorIds;
+            }
+            // Временно удаляем из POST, чтобы load() не пытался его загрузить
+            unset($_POST['Task']['executor_user_ids']);
+        }
+        
         if ($model->load(Yii::$app->request->post())) {
             // ВАЖНО: После load() нужно снова установить project_id и creator_id,
             // так как они могут быть перезаписаны из POST данных
@@ -132,34 +144,53 @@ class TaskController extends Controller
             } else {
                 $model->due_date = null;
             }
-            // Конвертируем исполнителей в ObjectId
-            if (!empty($_POST['Task']['executor_user_from_department_id'])) {
-                $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
-                $model->executor_subdepartment_id = null;
-                $model->executor_user_from_subdepartment_id = null;
-            } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
-                $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
-                $model->executor_user_from_department_id = null;
-                $model->executor_user_from_subdepartment_id = null;
-            } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
-                $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
+            // Обрабатываем исполнителей в зависимости от типа проекта
+            if ($isGlobalProject) {
+                // Для глобальных проектов: множественные исполнители
+                $model->executor_user_ids = $executorUserIdsData;
+                // Очищаем поля для обычных проектов
                 $model->executor_user_from_department_id = null;
                 $model->executor_subdepartment_id = null;
+                $model->executor_user_from_subdepartment_id = null;
+                
+                // Обрабатываем ответственного (глобальный менеджер)
+                if (!empty($_POST['Task']['responsible_user_id'])) {
+                    $model->responsible_user_id = new \MongoDB\BSON\ObjectId($_POST['Task']['responsible_user_id']);
+                } else {
+                    $model->responsible_user_id = null;
+                }
             } else {
-                $model->executor_user_from_department_id = null;
-                $model->executor_subdepartment_id = null;
-                $model->executor_user_from_subdepartment_id = null;
+                // Для обычных проектов: один исполнитель
+                $model->executor_user_ids = null;
+                $model->responsible_user_id = null; // Для обычных проектов ответственный не используется
+                if (!empty($_POST['Task']['executor_user_from_department_id'])) {
+                    $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
+                    $model->executor_subdepartment_id = null;
+                    $model->executor_user_from_subdepartment_id = null;
+                } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
+                    $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
+                    $model->executor_user_from_department_id = null;
+                    $model->executor_user_from_subdepartment_id = null;
+                } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
+                    $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
+                    $model->executor_user_from_department_id = null;
+                    $model->executor_subdepartment_id = null;
+                } else {
+                    $model->executor_user_from_department_id = null;
+                    $model->executor_subdepartment_id = null;
+                    $model->executor_user_from_subdepartment_id = null;
+                }
             }
             
             // Валидируем модель
             if ($model->validate()) {
                 if ($model->save(false)) { // false - чтобы не валидировать повторно
                     Yii::$app->session->setFlash('success', 'Задача успешно создана.');
-                    // Редирект зависит от типа проекта
+                    // Редирект зависит от типа проекта - переходим на вкладку "Задачи"
                     if ($isGlobalProject) {
-                        return $this->redirect(['global-project/view', 'id' => $project_id]);
+                        return $this->redirect(['global-project/view', 'id' => $project_id, '#' => 'tasks']);
                     } else {
-                        return $this->redirect(['project/view', 'id' => $project_id]);
+                        return $this->redirect(['project/view', 'id' => $project_id, '#' => 'tasks']);
                     }
                 } else {
                     Yii::$app->session->setFlash('error', 'Ошибка при сохранении задачи.');
@@ -196,6 +227,21 @@ class TaskController extends Controller
         
         // Проверка прав доступа
         $this->checkAccess($model, $user);
+
+        // Проверяем, является ли проект глобальным
+        $isGlobalProject = $model->project && $model->project->isGlobal();
+        
+        // Обрабатываем executor_user_ids до load(), чтобы избежать ошибки "Array to string conversion"
+        $executorUserIdsData = null;
+        if ($isGlobalProject && !empty($_POST['Task']['executor_user_ids'])) {
+            $executorIdsJson = $_POST['Task']['executor_user_ids'];
+            $executorIds = json_decode($executorIdsJson, true);
+            if (is_array($executorIds) && !empty($executorIds)) {
+                $executorUserIdsData = $executorIds;
+            }
+            // Временно удаляем из POST, чтобы load() не пытался его загрузить
+            unset($_POST['Task']['executor_user_ids']);
+        }
 
         if ($model->load(Yii::$app->request->post())) {
             // Обрабатываем подзадачи
@@ -234,23 +280,42 @@ class TaskController extends Controller
             } else {
                 $model->due_date = null;
             }
-            // Конвертируем исполнителей в ObjectId
-            if (!empty($_POST['Task']['executor_user_from_department_id'])) {
-                $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
-                $model->executor_subdepartment_id = null;
-                $model->executor_user_from_subdepartment_id = null;
-            } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
-                $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
-                $model->executor_user_from_department_id = null;
-                $model->executor_user_from_subdepartment_id = null;
-            } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
-                $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
+            // Обрабатываем исполнителей в зависимости от типа проекта
+            if ($isGlobalProject) {
+                // Для глобальных проектов: множественные исполнители
+                $model->executor_user_ids = $executorUserIdsData;
+                // Очищаем поля для обычных проектов
                 $model->executor_user_from_department_id = null;
                 $model->executor_subdepartment_id = null;
+                $model->executor_user_from_subdepartment_id = null;
+                
+                // Обрабатываем ответственного (глобальный менеджер)
+                if (!empty($_POST['Task']['responsible_user_id'])) {
+                    $model->responsible_user_id = new \MongoDB\BSON\ObjectId($_POST['Task']['responsible_user_id']);
+                } else {
+                    $model->responsible_user_id = null;
+                }
             } else {
-                $model->executor_user_from_department_id = null;
-                $model->executor_subdepartment_id = null;
-                $model->executor_user_from_subdepartment_id = null;
+                // Для обычных проектов: один исполнитель
+                $model->executor_user_ids = null;
+                $model->responsible_user_id = null; // Для обычных проектов ответственный не используется
+                if (!empty($_POST['Task']['executor_user_from_department_id'])) {
+                    $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
+                    $model->executor_subdepartment_id = null;
+                    $model->executor_user_from_subdepartment_id = null;
+                } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
+                    $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
+                    $model->executor_user_from_department_id = null;
+                    $model->executor_user_from_subdepartment_id = null;
+                } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
+                    $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
+                    $model->executor_user_from_department_id = null;
+                    $model->executor_subdepartment_id = null;
+                } else {
+                    $model->executor_user_from_department_id = null;
+                    $model->executor_subdepartment_id = null;
+                    $model->executor_user_from_subdepartment_id = null;
+                }
             }
             
             // Исполнитель может редактировать только определенные поля (статус, прогресс, описание)
@@ -273,11 +338,11 @@ class TaskController extends Controller
             
             if ($model->save()) {
                 Yii::$app->session->setFlash('success', 'Задача успешно обновлена.');
-                // Редирект зависит от типа проекта
+                // Редирект зависит от типа проекта - переходим на вкладку "Задачи"
                 if ($model->project->isGlobal()) {
-                    return $this->redirect(['global-project/view', 'id' => (string)$model->project_id]);
+                    return $this->redirect(['global-project/view', 'id' => (string)$model->project_id, '#' => 'tasks']);
                 } else {
-                    return $this->redirect(['project/view', 'id' => (string)$model->project_id]);
+                    return $this->redirect(['project/view', 'id' => (string)$model->project_id, '#' => 'tasks']);
                 }
             }
         }
@@ -371,8 +436,12 @@ class TaskController extends Controller
             return ['success' => false, 'message' => 'Неверный статус.'];
         }
         
+        // Проверяем, является ли проект глобальным
+        $isGlobalProject = $model->project && $model->project->isGlobal();
+        
         // Исполнитель может менять статус только своих задач
-        if ($user->role === User::ROLE_EXECUTOR) {
+        // В глобальных проектах все пользователи считаются исполнителями
+        if ($isGlobalProject || $user->role === User::ROLE_EXECUTOR) {
             if (!$model->isAssignedToUser($user)) {
                 return ['success' => false, 'message' => 'Вы можете менять статус только своих задач.'];
             }
@@ -617,12 +686,19 @@ class TaskController extends Controller
         $isGlobalProject = $model->project && $model->project->isGlobal();
         
         if ($isGlobalProject) {
-            // Для глобального проекта проверяем роль в глобальном проекте
+            // Для глобального проекта проверяем роль в глобальном проекте (только для топ-менеджеров)
             $userGlobalRole = \app\models\GlobalProjectRole::getUserRole($user->_id);
             if ($userGlobalRole === \app\models\GlobalProjectRole::ROLE_RECTOR || 
                 $userGlobalRole === \app\models\GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
                 return;
             }
+            // В глобальных проектах все пользователи считаются исполнителями по умолчанию
+            // Исполнитель может редактировать только свои задачи (статус, прогресс, описание)
+            if ($model->isAssignedToUser($user)) {
+                return;
+            }
+            // Если пользователь не назначен на задачу и не имеет роли - нет доступа
+            throw new NotFoundHttpException('У вас нет прав для выполнения этого действия.');
         } else {
             // Руководитель может редактировать задачи проектов своего подразделения
             if ($user->role === User::ROLE_HEAD && 
@@ -644,11 +720,11 @@ class TaskController extends Controller
                 (string)$model->project->department_id === (string)$user->department_id) {
                 return;
             }
-        }
-        
-        // Исполнитель может редактировать только свои задачи (статус, прогресс, описание)
-        if ($user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user)) {
-            return;
+            
+            // Исполнитель может редактировать только свои задачи (статус, прогресс, описание)
+            if ($user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user)) {
+                return;
+            }
         }
         
         throw new NotFoundHttpException('У вас нет прав для выполнения этого действия.');
@@ -664,38 +740,190 @@ class TaskController extends Controller
             return;
         }
         
-        // Ректор имеет доступ ко всем задачам (только просмотр)
-        if ($user->role === User::ROLE_RECTOR) {
-            return;
-        }
+        // Проверяем, является ли проект глобальным
+        $isGlobalProject = $model->project && $model->project->isGlobal();
         
-        // Руководитель имеет доступ к задачам проектов своего подразделения
-        if ($user->role === User::ROLE_HEAD && 
-            $model->project && $model->project->department_id && $user->department_id &&
-            (string)$model->project->department_id === (string)$user->department_id) {
-            return;
-        }
-        
-        // Топ-менеджер имеет доступ к задачам проектов своего подразделения
-        if ($user->role === User::ROLE_TOP_MANAGER && 
-            $model->project && $model->project->department_id && $user->department_id &&
-            (string)$model->project->department_id === (string)$user->department_id) {
-            return;
-        }
-        
-        // Менеджер имеет доступ к задачам проектов своего подразделения
-        if ($user->role === User::ROLE_MANAGER && 
-            $model->project && $model->project->department_id && $user->department_id &&
-            (string)$model->project->department_id === (string)$user->department_id) {
-            return;
-        }
-        
-        // Исполнитель имеет доступ только если он назначен на задачу
-        if ($user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user)) {
-            return;
+        if ($isGlobalProject) {
+            // В глобальных проектах все пользователи имеют доступ по умолчанию
+            // Глобальные менеджеры и ректор видят все задачи
+            $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
+            if ($userGlobalRole === GlobalProjectRole::ROLE_RECTOR || 
+                $userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+                return;
+            }
+            // Остальные пользователи видят только свои задачи
+            if ($model->isAssignedToUser($user)) {
+                return;
+            }
+        } else {
+            // Ректор имеет доступ ко всем задачам (только просмотр)
+            if ($user->role === User::ROLE_RECTOR) {
+                return;
+            }
+            
+            // Руководитель имеет доступ к задачам проектов своего подразделения
+            if ($user->role === User::ROLE_HEAD && 
+                $model->project && $model->project->department_id && $user->department_id &&
+                (string)$model->project->department_id === (string)$user->department_id) {
+                return;
+            }
+            
+            // Топ-менеджер имеет доступ к задачам проектов своего подразделения
+            if ($user->role === User::ROLE_TOP_MANAGER && 
+                $model->project && $model->project->department_id && $user->department_id &&
+                (string)$model->project->department_id === (string)$user->department_id) {
+                return;
+            }
+            
+            // Менеджер имеет доступ к задачам проектов своего подразделения
+            if ($user->role === User::ROLE_MANAGER && 
+                $model->project && $model->project->department_id && $user->department_id &&
+                (string)$model->project->department_id === (string)$user->department_id) {
+                return;
+            }
+            
+            // Исполнитель имеет доступ только если он назначен на задачу
+            if ($user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user)) {
+                return;
+            }
         }
         
         throw new NotFoundHttpException('У вас нет прав для просмотра этой задачи.');
+    }
+
+    /**
+     * Поиск пользователей для назначения исполнителей в глобальных проектах (AJAX)
+     * Исключает админов
+     * @return array
+     */
+    public function actionSearchUsers()
+    {
+        Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
+        
+        $query = trim(Yii::$app->request->get('q', ''));
+        $limit = 20;
+        
+        if (empty($query) || strlen($query) < 3) {
+            return ['results' => []];
+        }
+        
+        try {
+            // Используем регулярное выражение для поиска
+            $escapedQuery = preg_quote($query, '/');
+            $regex = new \MongoDB\BSON\Regex($escapedQuery, 'i');
+            
+            // Поиск по ФИО или email, исключая админов
+            $users = User::find()
+                ->where([
+                    '$and' => [
+                        [
+                            '$or' => [
+                                ['fio' => $regex],
+                                ['email' => $regex]
+                            ]
+                        ],
+                        ['role' => ['$ne' => User::ROLE_ADMIN]]
+                    ]
+                ])
+                ->orderBy(['fio' => SORT_ASC])
+                ->limit($limit)
+                ->all();
+            
+            $results = [];
+            foreach ($users as $user) {
+                if ($user->fio && $user->email) {
+                    $results[] = [
+                        'id' => (string)$user->_id,
+                        'text' => $user->fio . ' (' . $user->email . ')',
+                    ];
+                }
+            }
+            
+            return ['results' => $results];
+        } catch (\Exception $e) {
+            Yii::error('Error searching users: ' . $e->getMessage());
+            Yii::error('Stack trace: ' . $e->getTraceAsString());
+            return [
+                'results' => [],
+                'error' => YII_DEBUG ? $e->getMessage() : 'Ошибка при поиске пользователей'
+            ];
+        }
+    }
+
+    /**
+     * Поиск глобальных менеджеров для назначения ответственным
+     * @return array
+     */
+    public function actionSearchGlobalManagers()
+    {
+        Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
+        
+        try {
+            $query = Yii::$app->request->get('q', '');
+            $limit = 20;
+            
+            if (empty($query) || mb_strlen($query) < 2) {
+                return ['results' => []];
+            }
+            
+            // Получаем всех пользователей с ролью глобального менеджера
+            $globalManagers = GlobalProjectRole::find()
+                ->where(['role' => GlobalProjectRole::ROLE_GLOBAL_MANAGER])
+                ->all();
+            
+            $managerIds = [];
+            foreach ($globalManagers as $role) {
+                if ($role->user_id instanceof \MongoDB\BSON\ObjectId) {
+                    $managerIds[] = $role->user_id;
+                } elseif (is_string($role->user_id)) {
+                    try {
+                        $managerIds[] = new \MongoDB\BSON\ObjectId($role->user_id);
+                    } catch (\Exception $e) {
+                        // Пропускаем невалидные ID
+                    }
+                }
+            }
+            
+            if (empty($managerIds)) {
+                return ['results' => []];
+            }
+            
+            // Поиск по ФИО или email среди глобальных менеджеров
+            $regex = new \MongoDB\BSON\Regex($query, 'i');
+            $users = User::find()
+                ->where([
+                    '$and' => [
+                        [
+                            '$or' => [
+                                ['fio' => $regex],
+                                ['email' => $regex]
+                            ]
+                        ],
+                        ['_id' => ['$in' => $managerIds]]
+                    ]
+                ])
+                ->orderBy(['fio' => SORT_ASC])
+                ->limit($limit)
+                ->all();
+            
+            $results = [];
+            foreach ($users as $user) {
+                if ($user->fio && $user->email) {
+                    $results[] = [
+                        'id' => (string)$user->_id,
+                        'text' => $user->fio . ' (' . $user->email . ')',
+                    ];
+                }
+            }
+            
+            return ['results' => $results];
+        } catch (\Exception $e) {
+            Yii::error('Error searching global managers: ' . $e->getMessage());
+            return [
+                'results' => [],
+                'error' => YII_DEBUG ? $e->getMessage() : 'Ошибка при поиске глобальных менеджеров'
+            ];
+        }
     }
 }
 

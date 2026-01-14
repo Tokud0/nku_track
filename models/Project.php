@@ -18,6 +18,7 @@ use app\models\Task;
  * @property \MongoDB\BSON\UTCDateTime $end_date
  * @property string $status draft / active / review / finished / frozen
  * @property \MongoDB\BSON\ObjectId $manager_id
+ * @property array|null $manager_ids массив ObjectId руководителей (для глобальных проектов)
  * @property \MongoDB\BSON\ObjectId $department_id ссылка на подразделение
  * @property int $progress процент выполнения (0-100)
  * @property \MongoDB\BSON\UTCDateTime|null $last_report_date
@@ -55,6 +56,7 @@ class Project extends ActiveRecord
             'end_date',
             'status',
             'manager_id',
+            'manager_ids',
             'department_id',
             'progress',
             'last_report_date',
@@ -69,6 +71,11 @@ class Project extends ActiveRecord
      */
     public $start_date_str;
     public $end_date_str;
+    
+    /**
+     * @var array виртуальное поле для выбора руководителей в формах
+     */
+    public $manager_ids_array = [];
 
     /**
      * @return array the validation rules.
@@ -76,7 +83,7 @@ class Project extends ActiveRecord
     public function rules()
     {
         return [
-            [['title', 'manager_id', 'status'], 'required'],
+            [['title', 'status'], 'required'],
             [['title', 'description', 'goals', 'status'], 'string'],
             [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
             [['status'], 'in', 'range' => [
@@ -87,9 +94,30 @@ class Project extends ActiveRecord
                 self::STATUS_FROZEN
             ]],
             [['progress'], 'integer', 'min' => 0, 'max' => 100],
-            [['manager_id'], 'exist', 'targetClass' => User::class, 'targetAttribute' => '_id'],
+            [['manager_id'], 'exist', 'targetClass' => User::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
+            [['manager_ids', 'manager_ids_array'], 'safe'],
             [['start_date', 'end_date', 'last_report_date', 'next_report_deadline', 'created_at', 'updated_at', 'start_date_str', 'end_date_str'], 'safe'],
+            // Для глобальных проектов требуется хотя бы один руководитель
+            [['manager_ids'], 'validateManagers', 'skipOnEmpty' => false],
         ];
+    }
+
+    /**
+     * Валидация руководителей
+     */
+    public function validateManagers($attribute, $params)
+    {
+        if ($this->isGlobal()) {
+            // Для глобальных проектов проверяем, что есть хотя бы один руководитель
+            if (empty($this->manager_ids) && empty($this->manager_id)) {
+                $this->addError('manager_ids', 'Для глобального проекта необходимо выбрать хотя бы одного руководителя.');
+            }
+        } else {
+            // Для обычных проектов требуется manager_id
+            if (empty($this->manager_id)) {
+                $this->addError('manager_id', 'Необходимо выбрать руководителя проекта.');
+            }
+        }
     }
 
     /**
@@ -166,6 +194,38 @@ class Project extends ActiveRecord
     public function getManager()
     {
         return $this->hasOne(User::class, ['_id' => 'manager_id']);
+    }
+
+    /**
+     * Gets all managers of the project (for global projects)
+     *
+     * @return User[]
+     */
+    public function getManagers()
+    {
+        if ($this->isGlobal() && !empty($this->manager_ids)) {
+            $managerIds = [];
+            foreach ($this->manager_ids as $id) {
+                if ($id instanceof \MongoDB\BSON\ObjectId) {
+                    $managerIds[] = $id;
+                } elseif (is_string($id)) {
+                    try {
+                        $managerIds[] = new \MongoDB\BSON\ObjectId($id);
+                    } catch (\Exception $e) {
+                        // Пропускаем невалидные ID
+                    }
+                }
+            }
+            if (!empty($managerIds)) {
+                return User::find()->where(['_id' => ['$in' => $managerIds]])->all();
+            }
+        }
+        // Для обратной совместимости, если есть manager_id
+        if ($this->manager_id) {
+            $manager = User::findOne(['_id' => $this->manager_id]);
+            return $manager ? [$manager] : [];
+        }
+        return [];
     }
 
 

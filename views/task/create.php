@@ -84,33 +84,115 @@ if (!isset($isGlobalProject)) {
 
             <?php if ($isGlobalProject): ?>
                 <?php
-                // Для глобального проекта получаем всех пользователей с ролями в глобальном проекте
-                $globalRoles = GlobalProjectRole::find()->all();
-                $globalUserIds = [];
-                foreach ($globalRoles as $role) {
-                    if ($role->user_id) {
-                        $globalUserIds[] = $role->user_id;
+                $searchUrl = \yii\helpers\Url::to(['task/search-users']);
+                $selectedExecutors = [];
+                $selectedExecutorsJs = '';
+                if ($model->executor_user_ids && is_array($model->executor_user_ids)) {
+                    foreach ($model->executor_user_ids as $userId) {
+                        // Безопасное преобразование ID в строку
+                        if ($userId instanceof \MongoDB\BSON\ObjectId) {
+                            $userIdStr = (string)$userId;
+                        } elseif (is_string($userId)) {
+                            $userIdStr = $userId;
+                        } else {
+                            $userIdStr = strval($userId);
+                        }
+                        $user = User::findOne(['_id' => $userIdStr]);
+                        if ($user) {
+                            $selectedExecutors[] = [
+                                'id' => $userIdStr,
+                                'text' => $user->fio . ' (' . $user->email . ')'
+                            ];
+                            
+                            // Генерируем JavaScript код заранее
+                            $executorId = json_encode($userIdStr, JSON_UNESCAPED_UNICODE);
+                            $executorText = json_encode($user->fio . ' (' . $user->email . ')', JSON_UNESCAPED_UNICODE);
+                            $selectedExecutorsJs .= "selectedExecutors[{$executorId}] = { id: {$executorId}, text: {$executorText} };\n";
+                        }
                     }
                 }
-                
-                $allUsers = [];
-                if (!empty($globalUserIds)) {
-                    $users = User::find()
-                        ->where(['_id' => ['$in' => $globalUserIds]])
-                        ->orderBy(['fio' => SORT_ASC])
-                        ->all();
-                    foreach ($users as $user) {
-                        $allUsers[(string)$user->_id] = $user->fio . ' (' . $user->email . ')';
-                    }
-                }
-                // Инициализируем переменную для JavaScript (не используется для глобального проекта, но нужна для избежания ошибок)
-                $usersBySubdepartmentJson = '{}';
                 ?>
-                <div class="form-group">
-                    <?= $form->field($model, 'executor_user_from_department_id')->dropDownList(
-                        $allUsers,
-                        ['prompt' => 'Выберите пользователя']
-                    )->label('Исполнитель') ?>
+                <div class="form-group field-task-executor_user_ids executor-search-wrapper">
+                    <label class="control-label">Исполнители</label>
+                    <div class="executor-search-container">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" 
+                                   id="executor-search" 
+                                   class="form-control" 
+                                   placeholder="Введите минимум 3 символа для поиска..."
+                                   autocomplete="off">
+                            <button type="button" 
+                                    class="btn btn-primary" 
+                                    id="executor-search-button"
+                                    title="Найти пользователей">
+                                <i class="fas fa-search"></i> Найти
+                            </button>
+                            <span class="input-group-text search-loader" style="display: none;">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </span>
+                        </div>
+                        <input type="hidden" name="Task[executor_user_ids]" id="executor-ids-input" value="<?= htmlspecialchars(json_encode(array_column($selectedExecutors, 'id'))) ?>">
+                        <div id="executor-search-results" class="executor-search-results"></div>
+                        <div class="help-block"></div>
+                        <div id="selected-executors" class="mt-2">
+                            <?php foreach ($selectedExecutors as $executor): ?>
+                                <span class="badge bg-primary fs-6 p-2 me-2 mb-2 selected-executor-badge">
+                                    <i class="fas fa-user me-2"></i>
+                                    <?= Html::encode($executor['text']) ?>
+                                    <button type="button" class="btn-close btn-close-white ms-2 remove-executor" data-user-id="<?= Html::encode($executor['id']) ?>" style="font-size: 0.7em;"></button>
+                                </span>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+                
+                <?php
+                // Поиск ответственного (глобального менеджера)
+                $responsibleSearchUrl = \yii\helpers\Url::to(['task/search-global-managers']);
+                $selectedResponsible = null;
+                $selectedResponsibleJs = '';
+                if ($model->responsible_user_id) {
+                    $responsibleIdStr = $model->responsible_user_id instanceof \MongoDB\BSON\ObjectId 
+                        ? (string)$model->responsible_user_id 
+                        : (string)$model->responsible_user_id;
+                    $responsibleUser = User::findOne(['_id' => $responsibleIdStr]);
+                    if ($responsibleUser) {
+                        $selectedResponsible = [
+                            'id' => $responsibleIdStr,
+                            'text' => $responsibleUser->fio . ' (' . $responsibleUser->email . ')'
+                        ];
+                        $responsibleId = json_encode($responsibleIdStr, JSON_UNESCAPED_UNICODE);
+                        $responsibleText = json_encode($responsibleUser->fio . ' (' . $responsibleUser->email . ')', JSON_UNESCAPED_UNICODE);
+                        $selectedResponsibleJs = "selectedResponsible = { id: {$responsibleId}, text: {$responsibleText} };\n";
+                    }
+                }
+                ?>
+                <div class="form-group field-task-responsible_user_id responsible-search-wrapper">
+                    <label class="control-label">Ответственный</label>
+                    <div class="responsible-search-container">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user-tie"></i></span>
+                            <input type="text" 
+                                   id="responsible-search" 
+                                   class="form-control" 
+                                   placeholder="Введите минимум 2 символа для поиска глобального менеджера..."
+                                   autocomplete="off"
+                                   value="<?= $selectedResponsible ? Html::encode($selectedResponsible['text']) : '' ?>">
+                            <button type="button" 
+                                    class="btn btn-primary" 
+                                    id="responsible-search-button"
+                                    title="Найти глобального менеджера">
+                                <i class="fas fa-search"></i> Найти
+                            </button>
+                            <span class="input-group-text search-loader-responsible" style="display: none;">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </span>
+                        </div>
+                        <input type="hidden" name="Task[responsible_user_id]" id="responsible-id-input" value="<?= $selectedResponsible ? Html::encode($selectedResponsible['id']) : '' ?>">
+                        <div id="responsible-search-results" class="responsible-search-results"></div>
+                        <div class="help-block"></div>
+                    </div>
                 </div>
             <?php else: ?>
                 <div class="form-group">
@@ -335,7 +417,7 @@ if (!isset($isGlobalProject)) {
                 });
                 ");
             else:
-                // JavaScript для глобального проекта (только управление подзадачами)
+                // JavaScript для глобального проекта
                 $this->registerJs("
                 // Управление подзадачами
                 var subtaskIndex = 1;
@@ -378,3 +460,637 @@ if (!isset($isGlobalProject)) {
     </div>
 
 </div>
+
+<?php if ($isGlobalProject): ?>
+<style>
+.executor-search-wrapper {
+    margin-bottom: 1.5rem;
+}
+
+.executor-search-container {
+    position: relative;
+}
+
+.executor-search-container .input-group {
+    margin-bottom: 0;
+}
+
+.executor-search-container .input-group-text {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+}
+
+#executor-search {
+    border-left: none;
+    border-right: none;
+}
+
+#executor-search:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+#executor-search-button {
+    border-left: none;
+    white-space: nowrap;
+    z-index: 0;
+}
+
+#executor-search-button:hover {
+    z-index: 1;
+}
+
+.search-loader {
+    background-color: #f8f9fa;
+}
+
+#executor-search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    max-height: 350px;
+    overflow-y: auto;
+    display: none;
+    margin-top: 4px;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    background: white;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.executor-search-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s;
+    color: #212529;
+}
+
+.executor-search-item:last-child {
+    border-bottom: none;
+}
+
+.executor-search-item:hover,
+.executor-search-item.active {
+    background-color: #e7f1ff;
+    color: #0d6efd;
+}
+
+.executor-search-item i {
+    color: #6c757d;
+}
+
+.executor-search-item:hover i,
+.executor-search-item.active i {
+    color: #0d6efd;
+}
+
+.executor-search-hint {
+    padding: 0.75rem 1rem;
+    color: #6c757d;
+    font-style: italic;
+    text-align: center;
+}
+
+.executor-search-empty {
+    padding: 1rem;
+    color: #6c757d;
+    text-align: center;
+}
+
+.executor-search-error {
+    padding: 0.75rem 1rem;
+    color: #dc3545;
+    text-align: center;
+}
+
+#selected-executors {
+    margin-top: 0.75rem;
+}
+
+.selected-executor-badge {
+    display: inline-flex;
+    align-items: center;
+    font-weight: 500;
+}
+
+.selected-executor-badge .btn-close {
+    opacity: 0.8;
+}
+
+.selected-executor-badge .btn-close:hover {
+    opacity: 1;
+}
+
+.responsible-search-wrapper {
+    margin-bottom: 1.5rem;
+}
+
+.responsible-search-container {
+    position: relative;
+}
+
+.responsible-search-container .input-group {
+    margin-bottom: 0;
+}
+
+#responsible-search {
+    border-left: none;
+    border-right: none;
+}
+
+#responsible-search-button {
+    border-left: none;
+    white-space: nowrap;
+    z-index: 0;
+}
+
+#responsible-search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    max-height: 350px;
+    overflow-y: auto;
+    display: none;
+    margin-top: 4px;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    background: white;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.responsible-search-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s;
+    color: #212529;
+}
+
+.responsible-search-item:last-child {
+    border-bottom: none;
+}
+
+.responsible-search-item:hover {
+    background-color: #e7f1ff;
+    color: #0d6efd;
+}
+
+.responsible-search-hint,
+.responsible-search-empty,
+.responsible-search-error {
+    padding: 0.75rem 1rem;
+    text-align: center;
+}
+
+.responsible-search-hint {
+    color: #6c757d;
+    font-style: italic;
+}
+
+.responsible-search-empty {
+    color: #6c757d;
+}
+
+.responsible-search-error {
+    color: #dc3545;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var searchInput = document.getElementById('executor-search');
+    var resultsDiv = document.getElementById('executor-search-results');
+    var executorIdsInput = document.getElementById('executor-ids-input');
+    var selectedExecutorsDiv = document.getElementById('selected-executors');
+    var loader = document.querySelector('.search-loader');
+    var searchButton = document.getElementById('executor-search-button');
+    var searchTimeout;
+    var searchUrl = '<?= $searchUrl ?>';
+    var minLength = 3;
+    var selectedExecutors = {};
+    
+    console.log('Search URL:', searchUrl);
+    
+    // Загружаем уже выбранных исполнителей
+    <?= $selectedExecutorsJs ?>
+    
+    // Обработчик клика на кнопку поиска
+    if (searchButton) {
+        searchButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            var query = searchInput.value.trim();
+            
+            if (query.length < minLength) {
+                resultsDiv.innerHTML = '<div class="executor-search-hint">Введите минимум ' + minLength + ' символа для поиска</div>';
+                resultsDiv.style.display = 'block';
+                searchInput.focus();
+                return;
+            }
+            
+            performSearch(query);
+        });
+    }
+    
+    // Функция для выполнения поиска
+    function performSearch(query) {
+        if (!query || query.length < minLength) {
+            resultsDiv.style.display = 'none';
+            resultsDiv.innerHTML = '';
+            if (loader) loader.style.display = 'none';
+            return;
+        }
+        
+        if (loader) loader.style.display = 'block';
+        resultsDiv.style.display = 'none';
+        resultsDiv.innerHTML = '';
+        
+        console.log('Performing search with URL:', searchUrl, 'Query:', query);
+        
+        var url = searchUrl + '?q=' + encodeURIComponent(query);
+        fetch(url, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            }
+        })
+        .then(function(response) {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(function(response) {
+            console.log('Search response received:', response);
+            if (loader) loader.style.display = 'none';
+            resultsDiv.innerHTML = '';
+            
+            if (response && response.results !== undefined) {
+                if (response.results.length > 0) {
+                    response.results.forEach(function(user) {
+                        if (user && user.id && user.text) {
+                            // Пропускаем уже выбранных пользователей
+                            if (selectedExecutors[user.id]) {
+                                return;
+                            }
+                            var item = document.createElement('div');
+                            item.className = 'executor-search-item';
+                            item.innerHTML = '<i class="fas fa-user me-2"></i>' + user.text;
+                            item.setAttribute('data-user-id', user.id);
+                            item.setAttribute('data-user-text', user.text);
+                            item.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                selectExecutor(user.id, user.text);
+                            });
+                            resultsDiv.appendChild(item);
+                        }
+                    });
+                    if (resultsDiv.children.length > 0) {
+                        resultsDiv.style.display = 'block';
+                    } else {
+                        resultsDiv.innerHTML = '<div class="executor-search-empty">Пользователи не найдены</div>';
+                        resultsDiv.style.display = 'block';
+                    }
+                } else {
+                    resultsDiv.innerHTML = '<div class="executor-search-empty">Пользователи не найдены</div>';
+                    resultsDiv.style.display = 'block';
+                }
+            } else {
+                console.error('Invalid response format:', response);
+                resultsDiv.innerHTML = '<div class="executor-search-error">Ошибка: неверный формат ответа от сервера</div>';
+                resultsDiv.style.display = 'block';
+            }
+        })
+        .catch(function(error) {
+            if (loader) loader.style.display = 'none';
+            console.error('Search error:', error);
+            resultsDiv.innerHTML = '<div class="executor-search-error">Ошибка при поиске. Попробуйте еще раз.</div>';
+            resultsDiv.style.display = 'block';
+        });
+    }
+    
+    // Функция выбора исполнителя
+    function selectExecutor(userId, userText) {
+        if (selectedExecutors[userId]) {
+            return; // Уже выбран
+        }
+        
+        selectedExecutors[userId] = {
+            id: userId,
+            text: userText
+        };
+        
+        updateExecutorIdsInput();
+        searchInput.value = '';
+        resultsDiv.style.display = 'none';
+        
+        // Добавляем badge
+        var badge = document.createElement('span');
+        badge.className = 'badge bg-primary fs-6 p-2 me-2 mb-2 selected-executor-badge';
+        badge.innerHTML = '<i class="fas fa-user me-2"></i>' + userText +
+            ' <button type="button" class="btn-close btn-close-white ms-2 remove-executor" data-user-id="' + userId + '" style="font-size: 0.7em;"></button>';
+        selectedExecutorsDiv.appendChild(badge);
+    }
+    
+    // Функция удаления исполнителя
+    function removeExecutor(userId) {
+        if (selectedExecutors[userId]) {
+            delete selectedExecutors[userId];
+            updateExecutorIdsInput();
+            var badge = document.querySelector('.remove-executor[data-user-id="' + userId + '"]');
+            if (badge) {
+                badge.closest('.selected-executor-badge').remove();
+            }
+        }
+    }
+    
+    // Обновление скрытого поля с ID исполнителей
+    function updateExecutorIdsInput() {
+        var ids = Object.keys(selectedExecutors);
+        executorIdsInput.value = JSON.stringify(ids);
+    }
+    
+    // Обработчик ввода текста - автоматический поиск
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            var query = this.value.trim();
+            
+            clearTimeout(searchTimeout);
+            
+            if (query.length === 0) {
+                resultsDiv.style.display = 'none';
+                resultsDiv.innerHTML = '';
+                return;
+            }
+            
+            // Показываем подсказку, если символов меньше минимума
+            if (query.length > 0 && query.length < minLength) {
+                resultsDiv.innerHTML = '<div class="executor-search-hint">Введите еще ' + (minLength - query.length) + ' символов для поиска</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+            
+            // Автоматически выполняем поиск с небольшой задержкой
+            searchTimeout = setTimeout(function() {
+                performSearch(query);
+            }, 250);
+        });
+        
+        // Обработка фокуса - показываем результаты, если есть текст
+        searchInput.addEventListener('focus', function() {
+            var query = this.value.trim();
+            if (query.length >= minLength) {
+                if (resultsDiv.children.length === 0) {
+                    performSearch(query);
+                } else {
+                    resultsDiv.style.display = 'block';
+                }
+            }
+        });
+    }
+    
+    // Скрываем результаты при клике вне области поиска
+    document.addEventListener('click', function(e) {
+        var container = document.querySelector('.executor-search-container');
+        if (container && !container.contains(e.target)) {
+            resultsDiv.style.display = 'none';
+        }
+    });
+    
+    // Удаление исполнителя (делегирование событий)
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('remove-executor')) {
+            e.preventDefault();
+            var userId = e.target.getAttribute('data-user-id');
+            removeExecutor(userId);
+        }
+    });
+    
+    // Навигация по результатам клавиатурой
+    if (searchInput) {
+        searchInput.addEventListener('keydown', function(e) {
+            var items = resultsDiv.querySelectorAll('.executor-search-item');
+            
+            if (e.keyCode === 40) { // Стрелка вниз
+                e.preventDefault();
+                var active = resultsDiv.querySelector('.executor-search-item.active');
+                if (active) {
+                    active.classList.remove('active');
+                    var next = active.nextElementSibling;
+                    if (next) {
+                        next.classList.add('active');
+                    } else if (items.length > 0) {
+                        items[0].classList.add('active');
+                    }
+                } else if (items.length > 0) {
+                    items[0].classList.add('active');
+                }
+            } else if (e.keyCode === 38) { // Стрелка вверх
+                e.preventDefault();
+                var active = resultsDiv.querySelector('.executor-search-item.active');
+                if (active) {
+                    active.classList.remove('active');
+                    var prev = active.previousElementSibling;
+                    if (prev) {
+                        prev.classList.add('active');
+                    } else if (items.length > 0) {
+                        items[items.length - 1].classList.add('active');
+                    }
+                } else if (items.length > 0) {
+                    items[items.length - 1].classList.add('active');
+                }
+            } else if (e.keyCode === 13) { // Enter
+                e.preventDefault();
+                var active = resultsDiv.querySelector('.executor-search-item.active');
+                if (active) {
+                    var userId = active.getAttribute('data-user-id');
+                    var userText = active.getAttribute('data-user-text');
+                    if (userId) {
+                        selectExecutor(userId, userText);
+                    }
+                } else {
+                    // Если ничего не выбрано, но есть результаты - выбираем первый
+                    if (items.length > 0) {
+                        var firstItem = items[0];
+                        var userId = firstItem.getAttribute('data-user-id');
+                        var userText = firstItem.getAttribute('data-user-text');
+                        if (userId) {
+                            selectExecutor(userId, userText);
+                        }
+                    } else {
+                        // Если результатов нет, запускаем поиск
+                        var query = searchInput.value.trim();
+                        if (query.length >= minLength) {
+                            performSearch(query);
+                        }
+                    }
+                }
+            } else if (e.keyCode === 27) { // Escape
+                e.preventDefault();
+                resultsDiv.style.display = 'none';
+            }
+        });
+    }
+    
+    // Поиск ответственного (глобального менеджера)
+    var responsibleSearchInput = document.getElementById('responsible-search');
+    var responsibleResultsDiv = document.getElementById('responsible-search-results');
+    var responsibleIdInput = document.getElementById('responsible-id-input');
+    var responsibleLoader = document.querySelector('.search-loader-responsible');
+    var responsibleSearchButton = document.getElementById('responsible-search-button');
+    var responsibleSearchTimeout;
+    var responsibleSearchUrl = '<?= $responsibleSearchUrl ?>';
+    var responsibleMinLength = 2;
+    var selectedResponsible = null;
+    
+    // Загружаем уже выбранного ответственного
+    <?= $selectedResponsibleJs ?>
+    if (selectedResponsible) {
+        responsibleSearchInput.value = selectedResponsible.text;
+    }
+    
+    // Обработчик клика на кнопку поиска
+    if (responsibleSearchButton) {
+        responsibleSearchButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            var query = responsibleSearchInput.value.trim();
+            
+            if (query.length < responsibleMinLength) {
+                responsibleResultsDiv.innerHTML = '<div class="responsible-search-hint">Введите минимум ' + responsibleMinLength + ' символа для поиска</div>';
+                responsibleResultsDiv.style.display = 'block';
+                responsibleSearchInput.focus();
+                return;
+            }
+            
+            performResponsibleSearch(query);
+        });
+    }
+    
+    // Функция для выполнения поиска ответственного
+    function performResponsibleSearch(query) {
+        if (!query || query.length < responsibleMinLength) {
+            responsibleResultsDiv.style.display = 'none';
+            responsibleResultsDiv.innerHTML = '';
+            if (responsibleLoader) responsibleLoader.style.display = 'none';
+            return;
+        }
+        
+        if (responsibleLoader) responsibleLoader.style.display = 'block';
+        responsibleResultsDiv.style.display = 'none';
+        responsibleResultsDiv.innerHTML = '';
+        
+        var url = responsibleSearchUrl + '?q=' + encodeURIComponent(query);
+        fetch(url, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            }
+        })
+        .then(function(response) {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(function(response) {
+            if (responsibleLoader) responsibleLoader.style.display = 'none';
+            responsibleResultsDiv.innerHTML = '';
+            
+            if (response && response.results !== undefined) {
+                if (response.results.length > 0) {
+                    response.results.forEach(function(manager) {
+                        if (manager && manager.id && manager.text) {
+                            var item = document.createElement('div');
+                            item.className = 'responsible-search-item';
+                            item.innerHTML = '<i class="fas fa-user-tie me-2"></i>' + manager.text;
+                            item.setAttribute('data-manager-id', manager.id);
+                            item.setAttribute('data-manager-text', manager.text);
+                            item.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                selectResponsible(manager.id, manager.text);
+                            });
+                            responsibleResultsDiv.appendChild(item);
+                        }
+                    });
+                    responsibleResultsDiv.style.display = 'block';
+                } else {
+                    responsibleResultsDiv.innerHTML = '<div class="responsible-search-empty">Глобальные менеджеры не найдены</div>';
+                    responsibleResultsDiv.style.display = 'block';
+                }
+            } else {
+                responsibleResultsDiv.innerHTML = '<div class="responsible-search-error">Ошибка: неверный формат ответа от сервера</div>';
+                responsibleResultsDiv.style.display = 'block';
+            }
+        })
+        .catch(function(error) {
+            if (responsibleLoader) responsibleLoader.style.display = 'none';
+            responsibleResultsDiv.innerHTML = '<div class="responsible-search-error">Ошибка при поиске. Попробуйте еще раз.</div>';
+            responsibleResultsDiv.style.display = 'block';
+        });
+    }
+    
+    // Функция выбора ответственного
+    function selectResponsible(managerId, managerText) {
+        selectedResponsible = {
+            id: managerId,
+            text: managerText
+        };
+        
+        responsibleIdInput.value = managerId;
+        responsibleSearchInput.value = managerText;
+        responsibleResultsDiv.style.display = 'none';
+    }
+    
+    // Обработчик ввода текста - автоматический поиск
+    if (responsibleSearchInput) {
+        responsibleSearchInput.addEventListener('input', function() {
+            var query = this.value.trim();
+            
+            clearTimeout(responsibleSearchTimeout);
+            
+            if (query.length === 0) {
+                responsibleResultsDiv.style.display = 'none';
+                responsibleResultsDiv.innerHTML = '';
+                selectedResponsible = null;
+                responsibleIdInput.value = '';
+                return;
+            }
+            
+            if (query.length > 0 && query.length < responsibleMinLength) {
+                responsibleResultsDiv.innerHTML = '<div class="responsible-search-hint">Введите еще ' + (responsibleMinLength - query.length) + ' символов для поиска</div>';
+                responsibleResultsDiv.style.display = 'block';
+                return;
+            }
+            
+            responsibleSearchTimeout = setTimeout(function() {
+                performResponsibleSearch(query);
+            }, 250);
+        });
+        
+        // Обработка фокуса
+        responsibleSearchInput.addEventListener('focus', function() {
+            var query = this.value.trim();
+            if (query.length >= responsibleMinLength) {
+                if (responsibleResultsDiv.children.length === 0) {
+                    performResponsibleSearch(query);
+                } else {
+                    responsibleResultsDiv.style.display = 'block';
+                }
+            }
+        });
+    }
+    
+    // Скрываем результаты при клике вне области поиска
+    document.addEventListener('click', function(e) {
+        var container = document.querySelector('.responsible-search-container');
+        if (container && !container.contains(e.target)) {
+            responsibleResultsDiv.style.display = 'none';
+        }
+    });
+});
+</script>
+<?php endif; ?>

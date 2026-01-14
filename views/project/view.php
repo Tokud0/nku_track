@@ -684,6 +684,36 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+    
+    // Проверяем наличие якоря #tasks в URL
+    if (window.location.hash === '#tasks') {
+        // Находим кнопку вкладки "Задачи" и активируем её
+        var tasksTab = document.getElementById('tasks-tab');
+        var tasksPane = document.getElementById('tasks');
+        
+        if (tasksTab && tasksPane) {
+            // Убираем активное состояние с других вкладок
+            var allTabs = document.querySelectorAll('.nav-link');
+            var allPanes = document.querySelectorAll('.tab-pane');
+            
+            allTabs.forEach(function(tab) {
+                tab.classList.remove('active');
+                tab.setAttribute('aria-selected', 'false');
+            });
+            
+            allPanes.forEach(function(pane) {
+                pane.classList.remove('show', 'active');
+            });
+            
+            // Активируем вкладку "Задачи"
+            tasksTab.classList.add('active');
+            tasksTab.setAttribute('aria-selected', 'true');
+            tasksPane.classList.add('show', 'active');
+            
+            // Прокручиваем к вкладке
+            tasksTab.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
 });
 </script>
 <?php endif; ?>
