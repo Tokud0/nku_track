@@ -551,4 +551,3 @@ document.addEventListener('DOMContentLoaded', function() {
     opacity: 1;
 }
 </style>
-

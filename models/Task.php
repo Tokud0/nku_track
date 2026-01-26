@@ -21,7 +21,8 @@ use app\models\Department;
  * @property \MongoDB\BSON\ObjectId|null $executor_subdepartment_id департамент из подразделения
  * @property \MongoDB\BSON\ObjectId|null $executor_user_from_subdepartment_id пользователь из департамента
  * @property array|null $executor_user_ids массив ObjectId исполнителей (для глобальных проектов)
- * @property \MongoDB\BSON\ObjectId|null $responsible_user_id ответственный (глобальный менеджер для глобальных проектов)
+ * @property array|null $responsible_user_ids массив ObjectId ответственных (для глобальных проектов)
+ * @property \MongoDB\BSON\ObjectId|null $responsible_user_id ответственный (глобальный менеджер для глобальных проектов) - устаревшее, используйте responsible_user_ids
  * @property \MongoDB\BSON\ObjectId $creator_id кто создал (руководитель)
  * @property \MongoDB\BSON\UTCDateTime|null $start_date
  * @property \MongoDB\BSON\UTCDateTime|null $due_date
@@ -69,6 +70,7 @@ class Task extends ActiveRecord
             'executor_subdepartment_id',
             'executor_user_from_subdepartment_id',
             'executor_user_ids',
+            'responsible_user_ids',
             'responsible_user_id',
             'creator_id',
             'start_date',
@@ -105,7 +107,7 @@ class Task extends ActiveRecord
             ]],
             [['progress'], 'integer', 'min' => 0, 'max' => 100],
             [['executor_user_from_department_id', 'executor_subdepartment_id', 'executor_user_from_subdepartment_id'], 'validateExecutor'],
-            [['executor_user_ids', 'attachments', 'subtasks', 'responsible_user_id'], 'safe'],
+            [['executor_user_ids', 'responsible_user_ids', 'attachments', 'subtasks', 'responsible_user_id'], 'safe'],
             [['is_archived'], 'boolean'],
             [['is_archived'], 'default', 'value' => false],
             [['start_date', 'due_date', 'created_at', 'updated_at'], 'safe'],
@@ -129,6 +131,7 @@ class Task extends ActiveRecord
             'executor_subdepartment_id' => 'Исполнитель (департамент)',
             'executor_user_from_subdepartment_id' => 'Исполнитель (из департамента)',
             'responsible_user_id' => 'Ответственный',
+            'responsible_user_ids' => 'Ответственные',
             'creator_id' => 'Создатель',
             'start_date' => 'Дата начала',
             'due_date' => 'Срок выполнения',
@@ -197,7 +200,26 @@ class Task extends ActiveRecord
                 $this->executor_user_ids = null;
             }
             
-            // Преобразуем responsible_user_id в ObjectId если это строка
+            // Обрабатываем множественных ответственных для глобальных проектов
+            if ($this->responsible_user_ids && is_array($this->responsible_user_ids)) {
+                $processedIds = [];
+                foreach ($this->responsible_user_ids as $userId) {
+                    if (is_string($userId) && preg_match('/^[0-9a-fA-F]{24}$/', $userId)) {
+                        try {
+                            $processedIds[] = new \MongoDB\BSON\ObjectId($userId);
+                        } catch (\Exception $e) {
+                            // Пропускаем невалидные ID
+                        }
+                    } elseif ($userId instanceof \MongoDB\BSON\ObjectId) {
+                        $processedIds[] = $userId;
+                    }
+                }
+                $this->responsible_user_ids = $processedIds;
+            } else if (empty($this->responsible_user_ids)) {
+                $this->responsible_user_ids = null;
+            }
+            
+            // Преобразуем responsible_user_id в ObjectId если это строка (для обратной совместимости)
             if (!empty($this->responsible_user_id) && is_string($this->responsible_user_id)) {
                 try {
                     $this->responsible_user_id = new \MongoDB\BSON\ObjectId($this->responsible_user_id);
@@ -231,6 +253,9 @@ class Task extends ActiveRecord
                 }
                 if ($this->executor_user_ids === null) {
                     $this->executor_user_ids = null;
+                }
+                if ($this->responsible_user_ids === null) {
+                    $this->responsible_user_ids = null;
                 }
                 if ($this->is_archived === null) {
                     $this->is_archived = false;
@@ -284,12 +309,65 @@ class Task extends ActiveRecord
 
     /**
      * Gets responsible user (global manager for global projects)
+     * Устаревший метод - используйте getResponsibleUsers() для получения массива
      *
      * @return \yii\mongodb\ActiveQuery
      */
     public function getResponsibleUser()
     {
         return $this->hasOne(User::class, ['_id' => 'responsible_user_id']);
+    }
+
+    /**
+     * Gets all responsible users (for global projects)
+     *
+     * @return array массив User моделей
+     */
+    public function getResponsibleUsers()
+    {
+        $users = [];
+        
+        // Для глобальных проектов: множественные ответственные
+        if ($this->responsible_user_ids && is_array($this->responsible_user_ids) && !empty($this->responsible_user_ids)) {
+            $userIds = [];
+            foreach ($this->responsible_user_ids as $userId) {
+                if (is_string($userId)) {
+                    try {
+                        $userIds[] = new \MongoDB\BSON\ObjectId($userId);
+                    } catch (\Exception $e) {
+                        // Пропускаем невалидные ID
+                    }
+                } elseif ($userId instanceof \MongoDB\BSON\ObjectId) {
+                    $userIds[] = $userId;
+                }
+            }
+            if (!empty($userIds)) {
+                $responsibleUsers = User::find()
+                    ->where(['_id' => ['$in' => $userIds]])
+                    ->all();
+                $users = array_merge($users, $responsibleUsers);
+            }
+        }
+        
+        // Для обратной совместимости: если есть старый responsible_user_id
+        if ($this->responsible_user_id) {
+            $user = User::findOne(['_id' => $this->responsible_user_id]);
+            if ($user) {
+                // Проверяем, не добавлен ли уже этот пользователь
+                $alreadyAdded = false;
+                foreach ($users as $existingUser) {
+                    if ((string)$existingUser->_id === (string)$user->_id) {
+                        $alreadyAdded = true;
+                        break;
+                    }
+                }
+                if (!$alreadyAdded) {
+                    $users[] = $user;
+                }
+            }
+        }
+        
+        return array_unique($users, SORT_REGULAR);
     }
 
     /**

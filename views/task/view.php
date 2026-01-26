@@ -281,53 +281,72 @@ $comments = Comment::find()
             <div class="nku-card mb-4">
                 <div class="nku-card__header">
                     <h5 class="mb-0">
-                        <i class="fas fa-user-tag me-2"></i>
                         Назначение
                     </h5>
                 </div>
                 <div class="nku-card__body">
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="text-muted mb-1">Исполнитель</label>
-                            <div class="d-flex align-items-center">
-                                <i class="fas fa-user-circle text-primary me-2" style="font-size: 1.5rem;"></i>
-                                <div>
-                                    <div class="fw-semibold"><?= Html::encode($model->getExecutorDisplayName()) ?></div>
-                                    <?php 
-                                    $assignedUsers = $model->getAssignedUsers();
-                                    if (!empty($assignedUsers) && count($assignedUsers) === 1): 
-                                        $executorUser = $assignedUsers[0];
-                                    ?>
+                            <label class="text-muted mb-1">Исполнитель(и)</label>
+                            <?php 
+                            $assignedUsers = $model->getAssignedUsers();
+                            if (!empty($assignedUsers)): 
+                            ?>
+                                <?php if (count($assignedUsers) === 1): ?>
+                                    <?php $executorUser = $assignedUsers[0]; ?>
+                                    <div>
+                                        <div class="fw-semibold"><?= Html::encode($executorUser->fio) ?></div>
                                         <small class="text-muted"><?= Html::encode($executorUser->email ?? '') ?></small>
+                                    </div>
+                                <?php else: ?>
+                                    <div>
+                                        <?php foreach ($assignedUsers as $executorUser): ?>
+                                            <div class="mb-2">
+                                                <div class="fw-semibold"><?= Html::encode($executorUser->fio) ?></div>
+                                                <small class="text-muted"><?= Html::encode($executorUser->email ?? '') ?></small>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <div>
+                                    <div class="fw-semibold text-muted">Не назначен</div>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ($isGlobalProject): ?>
+                            <?php 
+                            $responsibleUsers = $model->getResponsibleUsers();
+                            if (!empty($responsibleUsers)): 
+                            ?>
+                                <div class="col-md-6 mb-3">
+                                    <label class="text-muted mb-1">Ответственный(е)</label>
+                                    <?php if (count($responsibleUsers) === 1): ?>
+                                        <?php $responsibleUser = $responsibleUsers[0]; ?>
+                                        <div>
+                                            <div class="fw-semibold"><?= Html::encode($responsibleUser->fio) ?></div>
+                                            <small class="text-muted"><?= Html::encode($responsibleUser->email ?? '') ?></small>
+                                        </div>
+                                    <?php else: ?>
+                                        <div>
+                                            <?php foreach ($responsibleUsers as $responsibleUser): ?>
+                                                <div class="mb-2">
+                                                    <div class="fw-semibold"><?= Html::encode($responsibleUser->fio) ?></div>
+                                                    <small class="text-muted"><?= Html::encode($responsibleUser->email ?? '') ?></small>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
-                            </div>
-                        </div>
-                        <?php if ($isGlobalProject && $model->responsible_user_id): ?>
-                            <?php $responsibleUser = $model->responsibleUser; ?>
-                            <div class="col-md-6 mb-3">
-                                <label class="text-muted mb-1">Ответственный</label>
-                                <div class="d-flex align-items-center">
-                                    <i class="fas fa-user-tie text-info me-2" style="font-size: 1.5rem;"></i>
-                                    <div>
-                                        <div class="fw-semibold"><?= Html::encode($responsibleUser ? ($responsibleUser->fio . ' (' . $responsibleUser->email . ')') : 'Не указан') ?></div>
-                                        <?php if ($responsibleUser): ?>
-                                            <small class="text-muted">Глобальный менеджер</small>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </div>
+                            <?php endif; ?>
                         <?php endif; ?>
                         <div class="col-md-6 mb-3">
                             <label class="text-muted mb-1">Создатель</label>
-                            <div class="d-flex align-items-center">
-                                <i class="fas fa-user text-secondary me-2" style="font-size: 1.5rem;"></i>
-                                <div>
-                                    <div class="fw-semibold"><?= $model->creator ? Html::encode($model->creator->fio) : 'Не указан' ?></div>
-                                    <?php if ($model->creator): ?>
-                                        <small class="text-muted"><?= Html::encode($model->creator->email ?? '') ?></small>
-                                    <?php endif; ?>
-                                </div>
+                            <div>
+                                <div class="fw-semibold"><?= $model->creator ? Html::encode($model->creator->fio) : 'Не указан' ?></div>
+                                <?php if ($model->creator): ?>
+                                    <small class="text-muted"><?= Html::encode($model->creator->email ?? '') ?></small>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>

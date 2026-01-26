@@ -39,6 +39,9 @@ if ($model->executor_user_from_department_id) {
 // Получаем подразделение проекта
 $department = $project->department;
 $isGlobalProject = $project->isGlobal();
+
+// Получаем подзадачи для использования в JavaScript
+$subtasks = is_array($model->subtasks) ? $model->subtasks : [];
 ?>
 
 <div class="task-update">
@@ -161,50 +164,84 @@ $isGlobalProject = $project->isGlobal();
                 </div>
                 
                 <?php
-                // Поиск ответственного (глобального менеджера)
+                // Поиск ответственных (любых пользователей)
                 $responsibleSearchUrl = \yii\helpers\Url::to(['task/search-global-managers']);
-                $selectedResponsible = null;
-                $selectedResponsibleJs = '';
-                if ($model->responsible_user_id) {
+                $selectedResponsibles = [];
+                $selectedResponsiblesJs = '';
+                // Проверяем новое поле responsible_user_ids
+                if ($model->responsible_user_ids && is_array($model->responsible_user_ids)) {
+                    foreach ($model->responsible_user_ids as $userId) {
+                        // Безопасное преобразование ID в строку
+                        if ($userId instanceof \MongoDB\BSON\ObjectId) {
+                            $userIdStr = (string)$userId;
+                        } elseif (is_string($userId)) {
+                            $userIdStr = $userId;
+                        } else {
+                            $userIdStr = strval($userId);
+                        }
+                        $user = User::findOne(['_id' => $userIdStr]);
+                        if ($user) {
+                            $selectedResponsibles[] = [
+                                'id' => $userIdStr,
+                                'text' => $user->fio . ' (' . $user->email . ')'
+                            ];
+                            
+                            // Генерируем JavaScript код заранее
+                            $responsibleId = json_encode($userIdStr, JSON_UNESCAPED_UNICODE);
+                            $responsibleText = json_encode($user->fio . ' (' . $user->email . ')', JSON_UNESCAPED_UNICODE);
+                            $selectedResponsiblesJs .= "selectedResponsibles[{$responsibleId}] = { id: {$responsibleId}, text: {$responsibleText} };\n";
+                        }
+                    }
+                }
+                // Для обратной совместимости: проверяем старое поле responsible_user_id
+                elseif ($model->responsible_user_id) {
                     $responsibleIdStr = $model->responsible_user_id instanceof \MongoDB\BSON\ObjectId 
                         ? (string)$model->responsible_user_id 
                         : (string)$model->responsible_user_id;
                     $responsibleUser = User::findOne(['_id' => $responsibleIdStr]);
                     if ($responsibleUser) {
-                        $selectedResponsible = [
+                        $selectedResponsibles[] = [
                             'id' => $responsibleIdStr,
                             'text' => $responsibleUser->fio . ' (' . $responsibleUser->email . ')'
                         ];
                         $responsibleId = json_encode($responsibleIdStr, JSON_UNESCAPED_UNICODE);
                         $responsibleText = json_encode($responsibleUser->fio . ' (' . $responsibleUser->email . ')', JSON_UNESCAPED_UNICODE);
-                        $selectedResponsibleJs = "selectedResponsible = { id: {$responsibleId}, text: {$responsibleText} };\n";
+                        $selectedResponsiblesJs .= "selectedResponsibles[{$responsibleId}] = { id: {$responsibleId}, text: {$responsibleText} };\n";
                     }
                 }
                 ?>
-                <div class="form-group field-task-responsible_user_id responsible-search-wrapper">
-                    <label class="control-label">Ответственный</label>
+                <div class="form-group field-task-responsible_user_ids responsible-search-wrapper">
+                    <label class="control-label">Ответственные</label>
                     <div class="responsible-search-container">
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-user-tie"></i></span>
                             <input type="text" 
                                    id="responsible-search" 
                                    class="form-control" 
-                                   placeholder="Введите минимум 2 символа для поиска глобального менеджера..."
-                                   autocomplete="off"
-                                   value="<?= $selectedResponsible ? Html::encode($selectedResponsible['text']) : '' ?>">
+                                   placeholder="Введите минимум 2 символа для поиска..."
+                                   autocomplete="off">
                             <button type="button" 
                                     class="btn btn-primary" 
                                     id="responsible-search-button"
-                                    title="Найти глобального менеджера">
+                                    title="Найти пользователей">
                                 <i class="fas fa-search"></i> Найти
                             </button>
                             <span class="input-group-text search-loader-responsible" style="display: none;">
                                 <i class="fas fa-spinner fa-spin"></i>
                             </span>
                         </div>
-                        <input type="hidden" name="Task[responsible_user_id]" id="responsible-id-input" value="<?= $selectedResponsible ? Html::encode($selectedResponsible['id']) : '' ?>">
+                        <input type="hidden" name="Task[responsible_user_ids]" id="responsible-ids-input" value="<?= htmlspecialchars(json_encode(array_column($selectedResponsibles, 'id'))) ?>">
                         <div id="responsible-search-results" class="responsible-search-results"></div>
                         <div class="help-block"></div>
+                        <div id="selected-responsibles" class="mt-2">
+                            <?php foreach ($selectedResponsibles as $responsible): ?>
+                                <span class="badge bg-primary fs-6 p-2 me-2 mb-2 selected-responsible-badge">
+                                    <i class="fas fa-user-tie me-2"></i>
+                                    <?= Html::encode($responsible['text']) ?>
+                                    <button type="button" class="btn-close btn-close-white ms-2 remove-responsible" data-user-id="<?= Html::encode($responsible['id']) ?>" style="font-size: 0.7em;"></button>
+                                </span>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -494,7 +531,6 @@ $isGlobalProject = $project->isGlobal();
         </div>
         <div id="subtasks-container">
             <?php
-            $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
             if (empty($subtasks)) {
                 // Если подзадач нет, показываем одно пустое поле
                 echo '<div class="subtask-item mb-2">';
@@ -748,6 +784,30 @@ $isGlobalProject = $project->isGlobal();
 
 .responsible-search-error {
     color: #dc3545;
+}
+
+#selected-responsibles {
+    margin-top: 0.75rem;
+}
+
+.selected-responsible-badge {
+    display: inline-flex;
+    align-items: center;
+    font-weight: 500;
+}
+
+.selected-responsible-badge .btn-close {
+    opacity: 0.8;
+}
+
+.selected-responsible-badge .btn-close:hover {
+    opacity: 1;
+}
+
+.responsible-search-item:hover,
+.responsible-search-item.active {
+    background-color: #e7f1ff;
+    color: #0d6efd;
 }
 </style>
 
@@ -1026,22 +1086,20 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Поиск ответственного (глобального менеджера)
+    // Поиск ответственных (любых пользователей)
     var responsibleSearchInput = document.getElementById('responsible-search');
     var responsibleResultsDiv = document.getElementById('responsible-search-results');
-    var responsibleIdInput = document.getElementById('responsible-id-input');
+    var responsibleIdsInput = document.getElementById('responsible-ids-input');
+    var selectedResponsiblesDiv = document.getElementById('selected-responsibles');
     var responsibleLoader = document.querySelector('.search-loader-responsible');
     var responsibleSearchButton = document.getElementById('responsible-search-button');
     var responsibleSearchTimeout;
     var responsibleSearchUrl = '<?= $responsibleSearchUrl ?>';
     var responsibleMinLength = 2;
-    var selectedResponsible = null;
+    var selectedResponsibles = {};
     
-    // Загружаем уже выбранного ответственного
-    <?= $selectedResponsibleJs ?>
-    if (selectedResponsible) {
-        responsibleSearchInput.value = selectedResponsible.text;
-    }
+    // Загружаем уже выбранных ответственных
+    <?= $selectedResponsiblesJs ?>
     
     // Обработчик клика на кнопку поиска
     if (responsibleSearchButton) {
@@ -1060,7 +1118,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Функция для выполнения поиска ответственного
+    // Функция для выполнения поиска ответственных
     function performResponsibleSearch(query) {
         if (!query || query.length < responsibleMinLength) {
             responsibleResultsDiv.style.display = 'none';
@@ -1092,23 +1150,32 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (response && response.results !== undefined) {
                 if (response.results.length > 0) {
-                    response.results.forEach(function(manager) {
-                        if (manager && manager.id && manager.text) {
+                    response.results.forEach(function(user) {
+                        if (user && user.id && user.text) {
+                            // Пропускаем уже выбранных пользователей
+                            if (selectedResponsibles[user.id]) {
+                                return;
+                            }
                             var item = document.createElement('div');
                             item.className = 'responsible-search-item';
-                            item.innerHTML = '<i class="fas fa-user-tie me-2"></i>' + manager.text;
-                            item.setAttribute('data-manager-id', manager.id);
-                            item.setAttribute('data-manager-text', manager.text);
+                            item.innerHTML = '<i class="fas fa-user-tie me-2"></i>' + user.text;
+                            item.setAttribute('data-user-id', user.id);
+                            item.setAttribute('data-user-text', user.text);
                             item.addEventListener('click', function(e) {
                                 e.preventDefault();
-                                selectResponsible(manager.id, manager.text);
+                                selectResponsible(user.id, user.text);
                             });
                             responsibleResultsDiv.appendChild(item);
                         }
                     });
-                    responsibleResultsDiv.style.display = 'block';
+                    if (responsibleResultsDiv.children.length > 0) {
+                        responsibleResultsDiv.style.display = 'block';
+                    } else {
+                        responsibleResultsDiv.innerHTML = '<div class="responsible-search-empty">Пользователи не найдены</div>';
+                        responsibleResultsDiv.style.display = 'block';
+                    }
                 } else {
-                    responsibleResultsDiv.innerHTML = '<div class="responsible-search-empty">Глобальные менеджеры не найдены</div>';
+                    responsibleResultsDiv.innerHTML = '<div class="responsible-search-empty">Пользователи не найдены</div>';
                     responsibleResultsDiv.style.display = 'block';
                 }
             } else {
@@ -1124,15 +1191,44 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Функция выбора ответственного
-    function selectResponsible(managerId, managerText) {
-        selectedResponsible = {
-            id: managerId,
-            text: managerText
+    function selectResponsible(userId, userText) {
+        if (selectedResponsibles[userId]) {
+            return; // Уже выбран
+        }
+        
+        selectedResponsibles[userId] = {
+            id: userId,
+            text: userText
         };
         
-        responsibleIdInput.value = managerId;
-        responsibleSearchInput.value = managerText;
+        updateResponsibleIdsInput();
+        responsibleSearchInput.value = '';
         responsibleResultsDiv.style.display = 'none';
+        
+        // Добавляем badge
+        var badge = document.createElement('span');
+        badge.className = 'badge bg-primary fs-6 p-2 me-2 mb-2 selected-responsible-badge';
+        badge.innerHTML = '<i class="fas fa-user-tie me-2"></i>' + userText +
+            ' <button type="button" class="btn-close btn-close-white ms-2 remove-responsible" data-user-id="' + userId + '" style="font-size: 0.7em;"></button>';
+        selectedResponsiblesDiv.appendChild(badge);
+    }
+    
+    // Функция удаления ответственного
+    function removeResponsible(userId) {
+        if (selectedResponsibles[userId]) {
+            delete selectedResponsibles[userId];
+            updateResponsibleIdsInput();
+            var badge = document.querySelector('.remove-responsible[data-user-id="' + userId + '"]');
+            if (badge) {
+                badge.closest('.selected-responsible-badge').remove();
+            }
+        }
+    }
+    
+    // Обновление скрытого поля с ID ответственных
+    function updateResponsibleIdsInput() {
+        var ids = Object.keys(selectedResponsibles);
+        responsibleIdsInput.value = JSON.stringify(ids);
     }
     
     // Обработчик ввода текста - автоматический поиск
@@ -1145,23 +1241,23 @@ document.addEventListener('DOMContentLoaded', function() {
             if (query.length === 0) {
                 responsibleResultsDiv.style.display = 'none';
                 responsibleResultsDiv.innerHTML = '';
-                selectedResponsible = null;
-                responsibleIdInput.value = '';
                 return;
             }
             
+            // Показываем подсказку, если символов меньше минимума
             if (query.length > 0 && query.length < responsibleMinLength) {
                 responsibleResultsDiv.innerHTML = '<div class="responsible-search-hint">Введите еще ' + (responsibleMinLength - query.length) + ' символов для поиска</div>';
                 responsibleResultsDiv.style.display = 'block';
                 return;
             }
             
+            // Автоматически выполняем поиск с небольшой задержкой
             responsibleSearchTimeout = setTimeout(function() {
                 performResponsibleSearch(query);
             }, 250);
         });
         
-        // Обработка фокуса
+        // Обработка фокуса - показываем результаты, если есть текст
         responsibleSearchInput.addEventListener('focus', function() {
             var query = this.value.trim();
             if (query.length >= responsibleMinLength) {
@@ -1181,6 +1277,81 @@ document.addEventListener('DOMContentLoaded', function() {
             responsibleResultsDiv.style.display = 'none';
         }
     });
+    
+    // Удаление ответственного (делегирование событий)
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('remove-responsible')) {
+            e.preventDefault();
+            var userId = e.target.getAttribute('data-user-id');
+            removeResponsible(userId);
+        }
+    });
+    
+    // Навигация по результатам клавиатурой
+    if (responsibleSearchInput) {
+        responsibleSearchInput.addEventListener('keydown', function(e) {
+            var items = responsibleResultsDiv.querySelectorAll('.responsible-search-item');
+            
+            if (e.keyCode === 40) { // Стрелка вниз
+                e.preventDefault();
+                var active = responsibleResultsDiv.querySelector('.responsible-search-item.active');
+                if (active) {
+                    active.classList.remove('active');
+                    var next = active.nextElementSibling;
+                    if (next) {
+                        next.classList.add('active');
+                    } else if (items.length > 0) {
+                        items[0].classList.add('active');
+                    }
+                } else if (items.length > 0) {
+                    items[0].classList.add('active');
+                }
+            } else if (e.keyCode === 38) { // Стрелка вверх
+                e.preventDefault();
+                var active = responsibleResultsDiv.querySelector('.responsible-search-item.active');
+                if (active) {
+                    active.classList.remove('active');
+                    var prev = active.previousElementSibling;
+                    if (prev) {
+                        prev.classList.add('active');
+                    } else if (items.length > 0) {
+                        items[items.length - 1].classList.add('active');
+                    }
+                } else if (items.length > 0) {
+                    items[items.length - 1].classList.add('active');
+                }
+            } else if (e.keyCode === 13) { // Enter
+                e.preventDefault();
+                var active = responsibleResultsDiv.querySelector('.responsible-search-item.active');
+                if (active) {
+                    var userId = active.getAttribute('data-user-id');
+                    var userText = active.getAttribute('data-user-text');
+                    if (userId) {
+                        selectResponsible(userId, userText);
+                    }
+                } else {
+                    // Если ничего не выбрано, но есть результаты - выбираем первый
+                    if (items.length > 0) {
+                        var firstItem = items[0];
+                        var userId = firstItem.getAttribute('data-user-id');
+                        var userText = firstItem.getAttribute('data-user-text');
+                        if (userId) {
+                            selectResponsible(userId, userText);
+                        }
+                    } else {
+                        // Если результатов нет, запускаем поиск
+                        var query = responsibleSearchInput.value.trim();
+                        if (query.length >= responsibleMinLength) {
+                            performResponsibleSearch(query);
+                        }
+                    }
+                }
+            } else if (e.keyCode === 27) { // Escape
+                e.preventDefault();
+                responsibleResultsDiv.style.display = 'none';
+            }
+        });
+    }
 });
 </script>
 <?php endif; ?>
