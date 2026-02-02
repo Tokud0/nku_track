@@ -36,10 +36,11 @@ class ProjectSearch extends Project
      * @param \MongoDB\BSON\ObjectId|null $managerId Фильтр по менеджеру
      * @param \MongoDB\BSON\ObjectId|null $executorId Фильтр по исполнителю (не используется, оставлен для совместимости)
      * @param \MongoDB\BSON\ObjectId|null $departmentId Фильтр по подразделению
+     * @param array $includeProjectIds Дополнительные ID проектов (например, где пользователь прикреплён к задаче)
      *
      * @return ActiveDataProvider
      */
-    public function search($params, $managerId = null, $executorId = null, $departmentId = null)
+    public function search($params, $managerId = null, $executorId = null, $departmentId = null, $includeProjectIds = [])
     {
         $query = Project::find();
 
@@ -51,10 +52,17 @@ class ProjectSearch extends Project
             $query->andWhere(['manager_id' => $managerId]);
         }
         
-        // Фильтр по подразделению
-        if ($departmentId) {
-            $deptId = is_string($departmentId) ? new \MongoDB\BSON\ObjectId($departmentId) : $departmentId;
-            $query->andWhere(['department_id' => $deptId]);
+        // Фильтр по подразделению ИЛИ по дополнительным проектам (где пользователь прикреплён)
+        if ($departmentId || !empty($includeProjectIds)) {
+            $conditions = [];
+            if ($departmentId) {
+                $deptId = is_string($departmentId) ? new \MongoDB\BSON\ObjectId($departmentId) : $departmentId;
+                $conditions[] = ['department_id' => $deptId];
+            }
+            if (!empty($includeProjectIds)) {
+                $conditions[] = ['_id' => ['$in' => $includeProjectIds]];
+            }
+            $query->andWhere(count($conditions) > 1 ? ['$or' => $conditions] : $conditions[0]);
         }
 
         $dataProvider = new ActiveDataProvider([

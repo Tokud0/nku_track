@@ -103,7 +103,38 @@ class ProjectController extends Controller
             }
         }
         
-        $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $managerId, null, $departmentId);
+        // Проекты, где пользователь прикреплён к задаче (из другого подразделения или без подразделения)
+        $includeProjectIds = [];
+        if ($user->role !== User::ROLE_ADMIN && $user->role !== User::ROLE_RECTOR) {
+            $tasksWithMe = Task::find()
+                ->where([
+                    '$or' => [
+                        ['executor_user_ids' => $user->_id],
+                        ['executor_user_from_department_id' => $user->_id],
+                        ['executor_user_from_subdepartment_id' => $user->_id],
+                    ],
+                ])
+                ->select(['project_id'])
+                ->all();
+            foreach ($tasksWithMe as $t) {
+                if ($t->project_id) {
+                    $includeProjectIds[(string)$t->project_id] = $t->project_id;
+                }
+            }
+            $approvedReqs = \app\models\TaskExecutorRequest::find()
+                ->where(['user_id' => $user->_id, 'status' => \app\models\TaskExecutorRequest::STATUS_APPROVED])
+                ->all();
+            foreach ($approvedReqs as $req) {
+                $task = Task::findOne(['_id' => $req->task_id]);
+                if ($task && $task->project_id) {
+                    $pid = $task->project_id;
+                    $includeProjectIds[(string)$pid] = $pid instanceof \MongoDB\BSON\ObjectId ? $pid : new \MongoDB\BSON\ObjectId($pid);
+                }
+            }
+            $includeProjectIds = array_values($includeProjectIds);
+        }
+        
+        $dataProvider = $searchModel->search(Yii::$app->request->queryParams, $managerId, null, $departmentId, $includeProjectIds);
 
         return $this->render('index', [
             'searchModel' => $searchModel,
@@ -120,6 +151,7 @@ class ProjectController extends Controller
     public function actionView($id)
     {
         $model = $this->findModel($id);
+        $user = Yii::$app->user->identity;
         
         // Проверка доступа
         $this->checkAccess($model);
@@ -127,9 +159,31 @@ class ProjectController extends Controller
         // Загружаем ТЗ для проекта
         $spec = ProjectSpec::findOne(['project_id' => $model->_id]);
         
+        // Задачи проекта (не архивные)
+        $tasks = Task::find()
+            ->where(['project_id' => $model->_id])
+            ->andWhere(['$or' => [
+                ['is_archived' => false],
+                ['is_archived' => ['$exists' => false]],
+            ]])
+            ->all();
+        // Прикреплённые из другого подразделения видят только свои задачи
+        if (!$model->isGlobal() && $model->department_id && $user->role !== User::ROLE_ADMIN && $user->role !== User::ROLE_RECTOR) {
+            $inProjectDepartment = $user->department_id && (string)$user->department_id === (string)$model->department_id;
+            if (!$inProjectDepartment) {
+                $tasks = array_filter($tasks, function ($task) use ($user) {
+                    return $task->isAssignedToUser($user);
+                });
+            }
+        }
+        
+        $userGlobalRole = $model->isGlobal() ? \app\models\GlobalProjectRole::getUserRole($user->_id) : null;
+        
         return $this->render('view', [
             'model' => $model,
             'spec' => $spec,
+            'tasks' => array_values($tasks),
+            'userGlobalRole' => $userGlobalRole,
         ]);
     }
 
@@ -194,29 +248,35 @@ class ProjectController extends Controller
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
         
-        // Ректор может только просматривать, не может редактировать
-        if ($user->role === User::ROLE_RECTOR) {
+        // Глобальный проект: админ, глоб. руководитель, глоб. топ-менеджер
+        if ($model->isGlobal()) {
+            $userGlobalRole = \app\models\GlobalProjectRole::getUserRole($user->_id);
+            $canEditGlobal = $user->role === User::ROLE_ADMIN || 
+                $userGlobalRole === \app\models\GlobalProjectRole::ROLE_RECTOR || 
+                $userGlobalRole === \app\models\GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER;
+            if (!$canEditGlobal) {
+                Yii::$app->session->setFlash('error', 'У вас нет прав для редактирования глобальных проектов.');
+                return $this->redirect(['view', 'id' => $id]);
+            }
+        }
+        // Обычный проект
+        elseif ($user->role === User::ROLE_RECTOR) {
             Yii::$app->session->setFlash('error', 'Ректор может только просматривать проекты.');
             return $this->redirect(['view', 'id' => $id]);
         }
-        
-        // Админ может редактировать все проекты
-        if ($user->role === User::ROLE_ADMIN) {
+        elseif ($user->role === User::ROLE_ADMIN) {
             // Разрешаем редактирование
         }
-        // Руководитель может редактировать все проекты своего подразделения
         elseif ($user->role === User::ROLE_HEAD && 
                 $model->department_id && $user->department_id &&
                 (string)$model->department_id === (string)$user->department_id) {
             // Разрешаем редактирование
         }
-        // Топ-менеджер может редактировать проекты своего подразделения
         elseif ($user->role === User::ROLE_TOP_MANAGER && 
                 $model->department_id && $user->department_id &&
                 (string)$model->department_id === (string)$user->department_id) {
             // Разрешаем редактирование
         }
-        // Менеджер не может редактировать проекты, только задачи
         else {
             Yii::$app->session->setFlash('error', 'Вы не можете редактировать этот проект.');
             return $this->redirect(['view', 'id' => $id]);
@@ -299,8 +359,27 @@ class ProjectController extends Controller
         // Проверка доступа к проекту
         $this->checkAccess($model);
         
+        // Задачи для канбана; прикреплённые из другого подразделения видят только свои
+        $tasksQuery = Task::find()
+            ->where(['project_id' => $model->_id])
+            ->andWhere(['$or' => [
+                ['is_archived' => false],
+                ['is_archived' => ['$exists' => false]],
+            ]])
+            ->orderBy(['created_at' => SORT_ASC]);
+        $tasks = $tasksQuery->all();
+        if (!$model->isGlobal() && $model->department_id && $user->role !== User::ROLE_ADMIN && $user->role !== User::ROLE_RECTOR) {
+            $inProjectDepartment = $user->department_id && (string)$user->department_id === (string)$model->department_id;
+            if (!$inProjectDepartment) {
+                $tasks = array_values(array_filter($tasks, function ($task) use ($user) {
+                    return $task->isAssignedToUser($user);
+                }));
+            }
+        }
+        
         return $this->render('kanban', [
             'model' => $model,
+            'tasks' => $tasks,
         ]);
     }
 
@@ -323,8 +402,17 @@ class ProjectController extends Controller
             ->where(['project_id' => $model->_id, 'is_archived' => true])
             ->orderBy(['created_at' => SORT_DESC]);
         
-        // Фильтруем задачи по видимости для исполнителя
+        // Фильтруем для исполнителя или прикреплённого из другого подразделения
+        $filterByAssigned = false;
         if ($user->role === User::ROLE_EXECUTOR) {
+            $filterByAssigned = true;
+        } elseif (!$model->isGlobal() && $model->department_id && $user->role !== User::ROLE_ADMIN && $user->role !== User::ROLE_RECTOR) {
+            $inProjectDepartment = $user->department_id && (string)$user->department_id === (string)$model->department_id;
+            if (!$inProjectDepartment) {
+                $filterByAssigned = true;
+            }
+        }
+        if ($filterByAssigned) {
             $allTasks = Task::find()
                 ->where(['project_id' => $model->_id, 'is_archived' => true])
                 ->all();
@@ -337,7 +425,7 @@ class ProjectController extends Controller
             if (!empty($visibleTaskIds)) {
                 $tasksQuery->andWhere(['_id' => ['$in' => $visibleTaskIds]]);
             } else {
-                $tasksQuery->andWhere(['_id' => ['$in' => []]]); // Пустой результат
+                $tasksQuery->andWhere(['_id' => ['$in' => []]]);
             }
         }
         
@@ -471,6 +559,14 @@ class ProjectController extends Controller
         if ($user->role === User::ROLE_EXECUTOR) {
             if ($model->department_id && $user->department_id && 
                 (string)$model->department_id === (string)$user->department_id) {
+                return;
+            }
+        }
+        
+        // Прикреплённые к задаче (из другого подразделения или без подразделения) видят проект
+        $projectTasks = Task::find()->where(['project_id' => $model->_id])->all();
+        foreach ($projectTasks as $task) {
+            if ($task->isAssignedToUser($user)) {
                 return;
             }
         }

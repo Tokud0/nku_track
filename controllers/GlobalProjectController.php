@@ -45,48 +45,13 @@ class GlobalProjectController extends Controller
 
     /**
      * Displays the global project.
+     * Redirects to direction index (new architecture).
      * @return mixed
      */
     public function actionIndex()
     {
-        // Получаем глобальный проект (department_id = null)
-        $model = Project::findOne(['department_id' => null]);
-        
-        if (!$model) {
-            // Если глобального проекта нет, создаем его
-            $user = Yii::$app->user->identity;
-            
-            // Только админ может создать глобальный проект
-            if ($user->role !== User::ROLE_ADMIN) {
-                Yii::$app->session->setFlash('error', 'Глобальный проект еще не создан. Обратитесь к администратору.');
-                return $this->redirect(['/site/index']);
-            }
-            
-            // Создаем глобальный проект
-            $model = new Project();
-            $model->title = 'Глобальный проект университета';
-            $model->description = 'Глобальный проект для всего университета';
-            $model->status = Project::STATUS_ACTIVE;
-            $model->department_id = null; // Глобальный проект не привязан к департаменту
-            
-            // Назначаем ректора как менеджера, если он есть
-            $rector = User::findOne(['role' => User::ROLE_RECTOR]);
-            if ($rector) {
-                $model->manager_ids = [$rector->_id];
-                $model->manager_id = $rector->_id; // Для обратной совместимости
-            } else {
-                // Если ректора нет, используем текущего админа
-                $model->manager_ids = [$user->_id];
-                $model->manager_id = $user->_id; // Для обратной совместимости
-            }
-            
-            if (!$model->save()) {
-                Yii::$app->session->setFlash('error', 'Ошибка при создании глобального проекта.');
-                return $this->redirect(['/site/index']);
-            }
-        }
-        
-        return $this->redirect(['view', 'id' => (string)$model->_id]);
+        // Перенаправляем на страницу направлений (новая архитектура)
+        return $this->redirect(['/direction/index']);
     }
 
     /**
@@ -138,11 +103,10 @@ class GlobalProjectController extends Controller
         
         $user = Yii::$app->user->identity;
         
-        // Только админ, ректор или глобальный менеджер в глобальном проекте может редактировать
+        // Только админ, глоб. руководитель или глоб. топ-менеджер может редактировать
         $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
         if ($user->role !== User::ROLE_ADMIN && 
-            $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
-            $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            !in_array($userGlobalRole, [GlobalProjectRole::ROLE_RECTOR, GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER])) {
             Yii::$app->session->setFlash('error', 'У вас нет прав для редактирования глобального проекта.');
             return $this->redirect(['view', 'id' => $id]);
         }
@@ -285,10 +249,9 @@ class GlobalProjectController extends Controller
             ]])
             ->orderBy(['created_at' => SORT_DESC]);
         
-        // Фильтруем задачи по видимости: глобальные менеджеры и ректор видят все задачи, остальные - только свои
+        // Фильтруем задачи по видимости: глоб. руководитель, топ-менеджер, менеджер видят все, глоб. исполнитель - только свои
         if ($user->role !== User::ROLE_ADMIN && 
-            $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
-            $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            !in_array($userGlobalRole, [GlobalProjectRole::ROLE_RECTOR, GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER, GlobalProjectRole::ROLE_GLOBAL_MANAGER])) {
             // Пользователь видит только задачи, на которые он назначен
             $allTasks = Task::find()
                 ->where(['project_id' => $model->_id])

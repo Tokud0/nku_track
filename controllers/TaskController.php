@@ -7,6 +7,8 @@ use app\models\Task;
 use app\models\Project;
 use app\models\User;
 use app\models\GlobalProjectRole;
+use app\models\TaskExecutorRequest;
+use app\models\Department;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
 use yii\filters\VerbFilter;
@@ -61,14 +63,19 @@ class TaskController extends Controller
         // Проверяем, является ли проект глобальным
         $isGlobalProject = $project->isGlobal();
         
-        // Для глобального проекта проверяем роль в глобальном проекте
+        // Для глобального проекта: админ, глоб. руководитель, глоб. топ-менеджер, глоб. менеджер
+        // Глоб. исполнитель НЕ может создавать задачи
         if ($isGlobalProject) {
             $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
-            if ($user->role !== User::ROLE_ADMIN && 
-                $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
-                $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            $canCreateGlobal = $user->role === User::ROLE_ADMIN || 
+                in_array($userGlobalRole, [
+                    GlobalProjectRole::ROLE_RECTOR,
+                    GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER,
+                    GlobalProjectRole::ROLE_GLOBAL_MANAGER,
+                ]);
+            if (!$canCreateGlobal) {
                 Yii::$app->session->setFlash('error', 'У вас нет прав для создания задач в глобальном проекте.');
-                return $this->redirect(['global-project/view', 'id' => $project_id]);
+                return $this->redirect($project->direction_id ? ['/direction/view', 'id' => (string)$project->direction_id] : ['global-project/view', 'id' => $project_id]);
             }
         } else {
             // Для обычных проектов: руководитель, топ-менеджер, менеджер и админ могут создавать задачи
@@ -98,15 +105,14 @@ class TaskController extends Controller
         $model->progress = 0;
         $model->attachments = [];
 
-        // Обрабатываем executor_user_ids до load(), чтобы избежать ошибки "Array to string conversion"
+        // Обрабатываем executor_user_ids до load() (глобальный проект и «поиск любого» в обычном)
         $executorUserIdsData = null;
-        if ($isGlobalProject && !empty($_POST['Task']['executor_user_ids'])) {
+        if (!empty($_POST['Task']['executor_user_ids'])) {
             $executorIdsJson = $_POST['Task']['executor_user_ids'];
             $executorIds = json_decode($executorIdsJson, true);
             if (is_array($executorIds) && !empty($executorIds)) {
                 $executorUserIdsData = $executorIds;
             }
-            // Временно удаляем из POST, чтобы load() не пытался его загрузить
             unset($_POST['Task']['executor_user_ids']);
         }
         
@@ -172,31 +178,72 @@ class TaskController extends Controller
                     $model->responsible_user_id = null;
                 }
             } else {
-                // Для обычных проектов: один исполнитель
-                $model->executor_user_ids = null;
-                $model->responsible_user_id = null; // Для обычных проектов ответственный не используется
-                if (!empty($_POST['Task']['executor_user_from_department_id'])) {
-                    $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
+                // Для обычных проектов: один исполнитель ИЛИ «поиск любого» (executor_user_ids)
+                $model->responsible_user_id = null;
+                $projectDepartmentId = $project->department_id ? (string)$project->department_id : null;
+
+                if (!empty($executorUserIdsData)) {
+                    // Режим «поиск любого сотрудника»: без подразделения — привязать; из другого подразделения — заявка
+                    $directExecutorIds = [];
+                    $requestUserIds = []; // пользователи, по которым создаём заявку (другое подразделение)
+                    foreach ($executorUserIdsData as $uid) {
+                        $uidStr = is_string($uid) ? $uid : (string)$uid;
+                        $executorUser = User::findOne(['_id' => $uidStr]);
+                        if (!$executorUser) continue;
+                        if (!$executorUser->department_id) {
+                            $directExecutorIds[] = $uidStr;
+                        } elseif ($projectDepartmentId && (string)$executorUser->department_id === $projectDepartmentId) {
+                            $directExecutorIds[] = $uidStr;
+                        } else {
+                            $requestUserIds[] = $uidStr;
+                        }
+                    }
+                    $model->executor_user_ids = $directExecutorIds;
+                    $model->executor_user_from_department_id = null;
                     $model->executor_subdepartment_id = null;
                     $model->executor_user_from_subdepartment_id = null;
-                } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
-                    $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
-                    $model->executor_user_from_department_id = null;
-                    $model->executor_user_from_subdepartment_id = null;
-                } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
-                    $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
-                    $model->executor_user_from_department_id = null;
-                    $model->executor_subdepartment_id = null;
+                    // Заявки создаём после сохранения задачи
                 } else {
-                    $model->executor_user_from_department_id = null;
-                    $model->executor_subdepartment_id = null;
-                    $model->executor_user_from_subdepartment_id = null;
+                    $model->executor_user_ids = null;
+                    if (!empty($_POST['Task']['executor_user_from_department_id'])) {
+                        $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
+                        $model->executor_subdepartment_id = null;
+                        $model->executor_user_from_subdepartment_id = null;
+                    } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
+                        $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
+                        $model->executor_user_from_department_id = null;
+                        $model->executor_user_from_subdepartment_id = null;
+                    } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
+                        $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
+                        $model->executor_user_from_department_id = null;
+                        $model->executor_subdepartment_id = null;
+                    } else {
+                        $model->executor_user_from_department_id = null;
+                        $model->executor_subdepartment_id = null;
+                        $model->executor_user_from_subdepartment_id = null;
+                    }
                 }
             }
-            
+
             // Валидируем модель
             if ($model->validate()) {
-                if ($model->save(false)) { // false - чтобы не валидировать повторно
+                if ($model->save(false)) {
+                    // Создаём заявки на прикрепление (исполнитель из другого подразделения)
+                    if (!$isGlobalProject && !empty($executorUserIdsData) && $project->department_id) {
+                        $projectDepartmentId = (string)$project->department_id;
+                        foreach ($executorUserIdsData as $uid) {
+                            $uidStr = is_string($uid) ? $uid : (string)$uid;
+                            $executorUser = User::findOne(['_id' => $uidStr]);
+                            if (!$executorUser || !$executorUser->department_id) continue;
+                            if ((string)$executorUser->department_id === $projectDepartmentId) continue;
+                            $req = new TaskExecutorRequest();
+                            $req->task_id = $model->_id;
+                            $req->user_id = $executorUser->_id;
+                            $req->status = TaskExecutorRequest::STATUS_PENDING;
+                            $req->requested_by = $user->_id;
+                            $req->save(false);
+                        }
+                    }
                     Yii::$app->session->setFlash('success', 'Задача успешно создана.');
                     // Редирект зависит от типа проекта - переходим на вкладку "Задачи"
                     if ($isGlobalProject) {
@@ -243,15 +290,14 @@ class TaskController extends Controller
         // Проверяем, является ли проект глобальным
         $isGlobalProject = $model->project && $model->project->isGlobal();
         
-        // Обрабатываем executor_user_ids до load(), чтобы избежать ошибки "Array to string conversion"
+        // Обрабатываем executor_user_ids до load() (глобальный и «поиск любого» при редактировании)
         $executorUserIdsData = null;
-        if ($isGlobalProject && !empty($_POST['Task']['executor_user_ids'])) {
+        if (!empty($_POST['Task']['executor_user_ids'])) {
             $executorIdsJson = $_POST['Task']['executor_user_ids'];
             $executorIds = json_decode($executorIdsJson, true);
             if (is_array($executorIds) && !empty($executorIds)) {
                 $executorUserIdsData = $executorIds;
             }
-            // Временно удаляем из POST, чтобы load() не пытался его загрузить
             unset($_POST['Task']['executor_user_ids']);
         }
         
@@ -318,26 +364,88 @@ class TaskController extends Controller
                 // Очищаем старое поле для обратной совместимости
                 $model->responsible_user_id = null;
             } else {
-                // Для обычных проектов: один исполнитель
-                $model->executor_user_ids = null;
+                // Для обычных проектов: один исполнитель ИЛИ «поиск любого» (executor_user_ids)
                 $model->responsible_user_ids = null;
-                $model->responsible_user_id = null; // Для обычных проектов ответственный не используется
-                if (!empty($_POST['Task']['executor_user_from_department_id'])) {
-                    $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
+                $model->responsible_user_id = null;
+                $project = $model->project;
+                $projectDepartmentId = $project && $project->department_id ? (string)$project->department_id : null;
+
+                if (!empty($executorUserIdsData)) {
+                    // Режим «поиск любого сотрудника» при редактировании: без подразделения / своё подразделение — в задачу; другое подразделение — заявка
+                    $directExecutorIds = [];
+                    foreach ($executorUserIdsData as $uid) {
+                        $uidStr = is_string($uid) ? $uid : (string)$uid;
+                        $executorUser = User::findOne(['_id' => $uidStr]);
+                        if (!$executorUser) continue;
+                        if (!$executorUser->department_id) {
+                            $directExecutorIds[] = $uidStr;
+                        } elseif ($projectDepartmentId && (string)$executorUser->department_id === $projectDepartmentId) {
+                            $directExecutorIds[] = $uidStr;
+                        } else {
+                            // Из другого подразделения: уже одобренные остаются в executor_user_ids (уже в задаче), новых добавляем только через заявку ниже
+                            $approved = TaskExecutorRequest::findOne([
+                                'task_id' => $model->_id,
+                                'user_id' => $executorUser->_id,
+                                'status' => TaskExecutorRequest::STATUS_APPROVED,
+                            ]);
+                            if ($approved) {
+                                $directExecutorIds[] = $uidStr;
+                            }
+                        }
+                    }
+                    $model->executor_user_ids = $directExecutorIds;
+                    $model->executor_user_from_department_id = null;
                     $model->executor_subdepartment_id = null;
                     $model->executor_user_from_subdepartment_id = null;
-                } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
-                    $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
-                    $model->executor_user_from_department_id = null;
-                    $model->executor_user_from_subdepartment_id = null;
-                } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
-                    $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
-                    $model->executor_user_from_department_id = null;
-                    $model->executor_subdepartment_id = null;
                 } else {
-                    $model->executor_user_from_department_id = null;
-                    $model->executor_subdepartment_id = null;
-                    $model->executor_user_from_subdepartment_id = null;
+                    $model->executor_user_ids = null;
+                    if (!empty($_POST['Task']['executor_user_from_department_id'])) {
+                        $model->executor_user_from_department_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_department_id']);
+                        $model->executor_subdepartment_id = null;
+                        $model->executor_user_from_subdepartment_id = null;
+                    } elseif (!empty($_POST['Task']['executor_subdepartment_id'])) {
+                        $model->executor_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_subdepartment_id']);
+                        $model->executor_user_from_department_id = null;
+                        $model->executor_user_from_subdepartment_id = null;
+                    } elseif (!empty($_POST['Task']['executor_user_from_subdepartment_id'])) {
+                        $model->executor_user_from_subdepartment_id = new \MongoDB\BSON\ObjectId($_POST['Task']['executor_user_from_subdepartment_id']);
+                        $model->executor_user_from_department_id = null;
+                        $model->executor_subdepartment_id = null;
+                    } else {
+                        $model->executor_user_from_department_id = null;
+                        $model->executor_subdepartment_id = null;
+                        $model->executor_user_from_subdepartment_id = null;
+                    }
+                }
+            }
+
+            // Создаём заявки на прикрепление для новых исполнителей из другого подразделения (при редактировании)
+            if (!$isGlobalProject && !empty($executorUserIdsData) && $model->project && $model->project->department_id) {
+                $projectDepartmentId = (string)$model->project->department_id;
+                $alreadyInTask = [];
+                if (is_array($model->executor_user_ids)) {
+                    foreach ($model->executor_user_ids as $eid) {
+                        $alreadyInTask[(string)$eid] = true;
+                    }
+                }
+                foreach ($executorUserIdsData as $uid) {
+                    $uidStr = is_string($uid) ? $uid : (string)$uid;
+                    if (isset($alreadyInTask[$uidStr])) continue;
+                    $executorUser = User::findOne(['_id' => $uidStr]);
+                    if (!$executorUser || !$executorUser->department_id) continue;
+                    if ((string)$executorUser->department_id === $projectDepartmentId) continue;
+                    $existingReq = TaskExecutorRequest::findOne([
+                        'task_id' => $model->_id,
+                        'user_id' => $executorUser->_id,
+                        'status' => TaskExecutorRequest::STATUS_PENDING,
+                    ]);
+                    if ($existingReq) continue;
+                    $req = new TaskExecutorRequest();
+                    $req->task_id = $model->_id;
+                    $req->user_id = $executorUser->_id;
+                    $req->status = TaskExecutorRequest::STATUS_PENDING;
+                    $req->requested_by = $user->_id;
+                    $req->save(false);
                 }
             }
             
@@ -351,6 +459,24 @@ class TaskController extends Controller
                 $model->executor_user_from_subdepartment_id = $oldModel->executor_user_from_subdepartment_id;
                 $model->creator_id = $oldModel->creator_id;
                 $model->project_id = $oldModel->project_id;
+            }
+            
+            // Глоб. исполнитель: только статус, прогресс, подзадачи (как обычный исполнитель)
+            $userGlobalRole = $model->project && $model->project->isGlobal() ? GlobalProjectRole::getUserRole($user->_id) : null;
+            if ($userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_EXECUTOR && $model->isAssignedToUser($user)) {
+                $oldModel = Task::findOne(['_id' => $model->_id]);
+                $model->title = $oldModel->title;
+                $model->priority = $oldModel->priority;
+                $model->description = $oldModel->description;
+                $model->executor_user_ids = $oldModel->executor_user_ids ?? [];
+                $model->responsible_user_ids = $oldModel->responsible_user_ids ?? [];
+                $model->executor_user_from_department_id = $oldModel->executor_user_from_department_id;
+                $model->executor_subdepartment_id = $oldModel->executor_subdepartment_id;
+                $model->executor_user_from_subdepartment_id = $oldModel->executor_user_from_subdepartment_id;
+                $model->creator_id = $oldModel->creator_id;
+                $model->project_id = $oldModel->project_id;
+                $model->start_date = $oldModel->start_date;
+                $model->due_date = $oldModel->due_date;
             }
             
             // Менеджер может редактировать задачи, но не может менять назначение (только при создании)
@@ -385,14 +511,20 @@ class TaskController extends Controller
         $user = Yii::$app->user->identity;
         $isGlobalProject = $model->project->isGlobal();
         
-        // Для глобального проекта проверяем роль в глобальном проекте
+        // Для глобального проекта: админ, глоб. руководитель, глоб. топ-менеджер, глоб. менеджер
+        // Глоб. исполнитель НЕ может удалять задачи
         if ($isGlobalProject) {
             $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
-            if ($user->role !== User::ROLE_ADMIN && 
-                $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
-                $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            $canDeleteGlobal = $user->role === User::ROLE_ADMIN || 
+                in_array($userGlobalRole, [
+                    GlobalProjectRole::ROLE_RECTOR,
+                    GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER,
+                    GlobalProjectRole::ROLE_GLOBAL_MANAGER,
+                ]);
+            if (!$canDeleteGlobal) {
                 Yii::$app->session->setFlash('error', 'Вы не можете удалять задачи в глобальном проекте.');
-                return $this->redirect(['global-project/view', 'id' => (string)$model->project_id]);
+                $project = $model->project;
+                return $this->redirect($project->direction_id ? ['/direction/view', 'id' => (string)$project->direction_id] : ['global-project/view', 'id' => (string)$model->project_id]);
             }
         } else {
             // Руководитель, топ-менеджер, менеджер и админ могут удалять задачи
@@ -458,9 +590,17 @@ class TaskController extends Controller
         // Проверяем, является ли проект глобальным
         $isGlobalProject = $model->project && $model->project->isGlobal();
         
-        // Исполнитель может менять статус только своих задач
-        // В глобальных проектах все пользователи считаются исполнителями
-        if ($isGlobalProject || $user->role === User::ROLE_EXECUTOR) {
+        // В глобальных проектах: руководитель/топ-менеджер/менеджер могут менять статус любых задач
+        // Глоб. исполнитель - только своих. В обычных: исполнитель - только своих.
+        if ($isGlobalProject) {
+            $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
+            $canChangeAny = $user->role === User::ROLE_ADMIN || in_array($userGlobalRole, [
+                GlobalProjectRole::ROLE_RECTOR, GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER, GlobalProjectRole::ROLE_GLOBAL_MANAGER,
+            ]);
+            if (!$canChangeAny && !$model->isAssignedToUser($user)) {
+                return ['success' => false, 'message' => 'Вы можете менять статус только своих задач.'];
+            }
+        } elseif ($user->role === User::ROLE_EXECUTOR) {
             if (!$model->isAssignedToUser($user)) {
                 return ['success' => false, 'message' => 'Вы можете менять статус только своих задач.'];
             }
@@ -508,8 +648,12 @@ class TaskController extends Controller
         // Проверка доступа
         $this->checkViewAccess($model, $user);
         
+        // Заявки на прикрепление (для блока «Ожидание одобрения / Отклонённые»)
+        $executorRequests = TaskExecutorRequest::getAllByTask($model->_id);
+        
         return $this->render('view', [
             'model' => $model,
+            'executorRequests' => $executorRequests,
         ]);
     }
 
@@ -555,8 +699,10 @@ class TaskController extends Controller
                 return ['success' => false, 'message' => 'Ректор может только просматривать задачи.'];
             }
             
-            // Исполнитель может изменять подзадачи только своих задач
-            if ($user->role === User::ROLE_EXECUTOR && !$model->isAssignedToUser($user)) {
+            // Исполнитель и глоб. исполнитель могут изменять подзадачи только своих задач
+            $userGlobalRole = $model->project && $model->project->isGlobal() ? GlobalProjectRole::getUserRole($user->_id) : null;
+            $isExecutor = $user->role === User::ROLE_EXECUTOR || $userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_EXECUTOR;
+            if ($isExecutor && !$model->isAssignedToUser($user)) {
                 return ['success' => false, 'message' => 'Вы можете изменять подзадачи только своих задач.'];
             }
             
@@ -705,18 +851,20 @@ class TaskController extends Controller
         $isGlobalProject = $model->project && $model->project->isGlobal();
         
         if ($isGlobalProject) {
-            // Для глобального проекта проверяем роль в глобальном проекте (только для топ-менеджеров)
             $userGlobalRole = \app\models\GlobalProjectRole::getUserRole($user->_id);
-            if ($userGlobalRole === \app\models\GlobalProjectRole::ROLE_RECTOR || 
-                $userGlobalRole === \app\models\GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            // Полное редактирование: админ, глоб. руководитель, глоб. топ-менеджер, глоб. менеджер
+            if ($user->role === User::ROLE_ADMIN || 
+                in_array($userGlobalRole, [
+                    \app\models\GlobalProjectRole::ROLE_RECTOR,
+                    \app\models\GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER,
+                    \app\models\GlobalProjectRole::ROLE_GLOBAL_MANAGER,
+                ])) {
                 return;
             }
-            // В глобальных проектах все пользователи считаются исполнителями по умолчанию
-            // Исполнитель может редактировать только свои задачи (статус, прогресс, описание)
-            if ($model->isAssignedToUser($user)) {
+            // Глоб. исполнитель: только просмотр и выполнение (ограниченное редактирование в actionUpdate)
+            if ($userGlobalRole === \app\models\GlobalProjectRole::ROLE_GLOBAL_EXECUTOR && $model->isAssignedToUser($user)) {
                 return;
             }
-            // Если пользователь не назначен на задачу и не имеет роли - нет доступа
             throw new NotFoundHttpException('У вас нет прав для выполнения этого действия.');
         } else {
             // Руководитель может редактировать задачи проектов своего подразделения
@@ -763,20 +911,28 @@ class TaskController extends Controller
         $isGlobalProject = $model->project && $model->project->isGlobal();
         
         if ($isGlobalProject) {
-            // В глобальных проектах все пользователи имеют доступ по умолчанию
-            // Глобальные менеджеры и ректор видят все задачи
             $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
-            if ($userGlobalRole === GlobalProjectRole::ROLE_RECTOR || 
-                $userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+            // Видят все задачи: админ, глоб. руководитель, глоб. топ-менеджер, глоб. менеджер
+            if ($user->role === User::ROLE_ADMIN || 
+                in_array($userGlobalRole, [
+                    GlobalProjectRole::ROLE_RECTOR,
+                    GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER,
+                    GlobalProjectRole::ROLE_GLOBAL_MANAGER,
+                ])) {
                 return;
             }
-            // Остальные пользователи видят только свои задачи
+            // Глоб. исполнитель видит только свои задачи
             if ($model->isAssignedToUser($user)) {
                 return;
             }
         } else {
             // Ректор имеет доступ ко всем задачам (только просмотр)
             if ($user->role === User::ROLE_RECTOR) {
+                return;
+            }
+            
+            // Прикреплённые к задаче (исполнители, в т.ч. по заявке из другого подразделения) видят задачу
+            if ($model->isAssignedToUser($user)) {
                 return;
             }
             
@@ -820,6 +976,7 @@ class TaskController extends Controller
         Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
         
         $query = trim(Yii::$app->request->get('q', ''));
+        $excludeDepartmentId = trim(Yii::$app->request->get('exclude_department_id', ''));
         $limit = 20;
         
         if (empty($query) || strlen($query) < 3) {
@@ -831,19 +988,43 @@ class TaskController extends Controller
             $escapedQuery = preg_quote($query, '/');
             $regex = new \MongoDB\BSON\Regex($escapedQuery, 'i');
             
-            // Поиск по ФИО или email, исключая админов
-            $users = User::find()
-                ->where([
-                    '$and' => [
-                        [
-                            '$or' => [
-                                ['fio' => $regex],
-                                ['email' => $regex]
-                            ]
-                        ],
-                        ['role' => ['$ne' => User::ROLE_ADMIN]]
+            $andConditions = [
+                [
+                    '$or' => [
+                        ['fio' => $regex],
+                        ['email' => $regex]
                     ]
-                ])
+                ],
+                ['role' => ['$ne' => User::ROLE_ADMIN]]
+            ];
+            
+            // Исключить пользователей из указанного подразделения (и его департаментов)
+            if ($excludeDepartmentId !== '') {
+                try {
+                    $excludeOid = new \MongoDB\BSON\ObjectId($excludeDepartmentId);
+                } catch (\Exception $e) {
+                    $excludeOid = null;
+                }
+                if ($excludeOid) {
+                    $subDepts = Department::find()
+                        ->where(['parent_id' => $excludeOid])
+                        ->select(['_id'])
+                        ->all();
+                    $subDeptOids = array_map(function ($d) {
+                        return $d->_id;
+                    }, $subDepts);
+                    $andConditions[] = ['department_id' => ['$ne' => $excludeOid]];
+                    $andConditions[] = [
+                        '$or' => [
+                            ['subdepartment_id' => null],
+                            ['subdepartment_id' => ['$nin' => $subDeptOids]]
+                        ]
+                    ];
+                }
+            }
+            
+            $users = User::find()
+                ->where(['$and' => $andConditions])
                 ->orderBy(['fio' => SORT_ASC])
                 ->limit($limit)
                 ->all();

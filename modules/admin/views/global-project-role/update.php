@@ -61,7 +61,8 @@ if ($model->user_id) {
         </div>
 
         <?= $form->field($model, 'role')->dropDownList([
-            GlobalProjectRole::ROLE_RECTOR => 'Ректор',
+            GlobalProjectRole::ROLE_RECTOR => 'Глобальный руководитель',
+            GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER => 'Глобальный топ-менеджер',
             GlobalProjectRole::ROLE_GLOBAL_MANAGER => 'Глобальный менеджер',
             GlobalProjectRole::ROLE_GLOBAL_EXECUTOR => 'Глобальный исполнитель',
         ], ['prompt' => 'Выберите роль']) ?>

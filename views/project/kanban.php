@@ -5,18 +5,21 @@ use yii\helpers\Url;
 use app\models\Project;
 use app\models\Task;
 use app\models\User;
+use app\models\GlobalProjectRole;
 
 /** @var yii\web\View $this */
 /** @var app\models\Project $model */
+/** @var app\models\Task[]|null $tasks задачи (если переданы из контроллера) */
 
 $this->title = 'Канбан-доска: ' . $model->title;
 
 // Проверяем, является ли проект глобальным
 $isGlobalProject = $model->isGlobal();
+$userGlobalRole = $isGlobalProject ? GlobalProjectRole::getUserRole(Yii::$app->user->identity->_id) : null;
 
 if ($isGlobalProject) {
-    $this->params['breadcrumbs'][] = ['label' => 'Глобальный проект', 'url' => ['global-project/index']];
-    $this->params['breadcrumbs'][] = ['label' => $model->title, 'url' => ['global-project/view', 'id' => (string)$model->_id]];
+    $this->params['breadcrumbs'][] = ['label' => 'Глобальный проект', 'url' => ['direction/index']];
+    $this->params['breadcrumbs'][] = ['label' => $model->title, 'url' => $model->direction_id ? ['direction/view', 'id' => (string)$model->direction_id] : ['global-project/view', 'id' => (string)$model->_id]];
 } else {
     $this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['project/index']];
     $this->params['breadcrumbs'][] = ['label' => $model->title, 'url' => ['project/view', 'id' => (string)$model->_id]];
@@ -24,18 +27,15 @@ if ($isGlobalProject) {
 $this->params['breadcrumbs'][] = 'Канбан-доска';
 
 $user = Yii::$app->user->identity;
-$tasksQuery = Task::find()->where(['project_id' => $model->_id]);
-
-// Исключаем архивные задачи из канбан-доски
-$tasksQuery->andWhere(['$or' => [
-    ['is_archived' => false],
-    ['is_archived' => ['$exists' => false]], // Для старых задач, где поле еще не установлено
-]]);
-
-// Для исполнителя по умолчанию показываем все задачи проекта
-// Фильтрация "Мои задачи" будет работать на клиенте через JavaScript
-
-$tasks = $tasksQuery->all();
+// Задачи переданы из контроллера (уже отфильтрованы для прикреплённых из другого подразделения)
+if (!isset($tasks)) {
+    $tasksQuery = Task::find()->where(['project_id' => $model->_id]);
+    $tasksQuery->andWhere(['$or' => [
+        ['is_archived' => false],
+        ['is_archived' => ['$exists' => false]],
+    ]]);
+    $tasks = $tasksQuery->all();
+}
 $tasksByStatus = [
     Task::STATUS_TODO => [],
     Task::STATUS_IN_PROGRESS => [],
@@ -51,9 +51,17 @@ foreach ($tasks as $task) {
 }
 
 // Определяем права пользователя
-$canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
-$canDragTasks = true; // По умолчанию все могут перетаскивать
-$canEditTasks = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
+if ($isGlobalProject) {
+    $canCreateTask = $user->role === User::ROLE_ADMIN || in_array($userGlobalRole, [
+        GlobalProjectRole::ROLE_RECTOR, GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER, GlobalProjectRole::ROLE_GLOBAL_MANAGER,
+    ]);
+    $canEditTasks = $canCreateTask; // Глоб. исполнитель не может редактировать задачи
+    $canDragTasks = true; // Глоб. исполнитель может перетаскивать свои задачи (выполнять)
+} else {
+    $canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
+    $canEditTasks = $canCreateTask;
+    $canDragTasks = true;
+}
 
 // UI-флаг режима ректора
 $RECTOR_TASKS_MODE = "readonly"; // "readonly" или "limited"
@@ -328,7 +336,9 @@ $currentRoleInfo = $roleInfo[$user->role] ?? ['label' => $user->role, 'icon' => 
                                                     ['class' => 'nku-btn nku-btn--xs nku-btn--outline-primary']
                                                 ) ?>
                                                 <?php 
-                                                $canEdit = $canEditTasks || ($user->role === User::ROLE_EXECUTOR && $task->isAssignedToUser($user));
+                                                $canEdit = $canEditTasks || 
+                                                    ($user->role === User::ROLE_EXECUTOR && $task->isAssignedToUser($user)) ||
+                                                    ($userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_EXECUTOR && $task->isAssignedToUser($user));
                                                 if ($canEdit): ?>
                                                     <?= Html::a(
                                                         '<i class="fas fa-edit"></i>',

@@ -66,7 +66,16 @@ $config = [
                 'project/<id:[a-f0-9]{24}>' => 'project/view',
                 'project/<action:\w+>' => 'project/<action>',
                 'project/<action:\w+>/<id:[a-f0-9]{24}>' => 'project/<action>',
-                // Правила для глобального проекта
+                // Правила для направлений глобального проекта
+                'direction' => 'direction/index',
+                'direction/create' => 'direction/create',
+                'direction/<id:[a-f0-9]{24}>/create-project' => 'direction/create-project',
+                'direction/<id:[a-f0-9]{24}>/update' => 'direction/update',
+                'direction/<id:[a-f0-9]{24}>/delete' => 'direction/delete',
+                'direction/<id:[a-f0-9]{24}>' => 'direction/view',
+                'direction/<action:\w+>' => 'direction/<action>',
+                // Правила для глобального проекта (legacy, перенаправление на направления)
+                'global-project' => 'direction/index',
                 'global-project/<id:[a-f0-9]{24}>/kanban' => 'global-project/kanban',
                 'global-project/<id:[a-f0-9]{24}>' => 'global-project/view',
                 'global-project/<action:\w+>' => 'global-project/<action>',
@@ -80,6 +89,9 @@ $config = [
                 'task/<id:[a-f0-9]{24}>/delete' => 'task/delete',
                 'task/<id:[a-f0-9]{24}>/change-status' => 'task/change-status',
                 'task/<id:[a-f0-9]{24}>' => 'task/view',
+                // Заявки на прикрепление к задаче
+                'task-executor-request/<id:[a-f0-9]{24}>/<action:\w+>' => 'task-executor-request/<action>',
+                'task-executor-request/<action:\w+>' => 'task-executor-request/<action>',
             ],
         ],
     ],

@@ -16,9 +16,10 @@ use Yii;
  */
 class GlobalProjectRole extends ActiveRecord
 {
-    const ROLE_RECTOR = 'rector'; // Ректор - главный в глобальном проекте, создает задачи
-    const ROLE_GLOBAL_MANAGER = 'global_manager'; // Глобальный менеджер - управляет задачами
-    const ROLE_GLOBAL_EXECUTOR = 'global_executor'; // Глобальный исполнитель - выполняет задачи
+    const ROLE_RECTOR = 'rector'; // Глобальный руководитель - полный доступ к направлениям, проектам, задачам
+    const ROLE_GLOBAL_TOP_MANAGER = 'global_top_manager'; // Глобальный топ-менеджер - проекты и задачи
+    const ROLE_GLOBAL_MANAGER = 'global_manager'; // Глобальный менеджер - только задачи
+    const ROLE_GLOBAL_EXECUTOR = 'global_executor'; // Глобальный исполнитель - только просмотр и выполнение задач
 
     /**
      * @return string the name of the index associated with this ActiveRecord class.
@@ -51,6 +52,7 @@ class GlobalProjectRole extends ActiveRecord
             [['user_id', 'role'], 'required'],
             [['role'], 'in', 'range' => [
                 self::ROLE_RECTOR,
+                self::ROLE_GLOBAL_TOP_MANAGER,
                 self::ROLE_GLOBAL_MANAGER,
                 self::ROLE_GLOBAL_EXECUTOR,
             ]],
@@ -107,7 +109,8 @@ class GlobalProjectRole extends ActiveRecord
     public function getRoleLabel()
     {
         $labels = [
-            self::ROLE_RECTOR => 'Ректор',
+            self::ROLE_RECTOR => 'Глобальный руководитель',
+            self::ROLE_GLOBAL_TOP_MANAGER => 'Глобальный топ-менеджер',
             self::ROLE_GLOBAL_MANAGER => 'Глобальный менеджер',
             self::ROLE_GLOBAL_EXECUTOR => 'Глобальный исполнитель',
         ];

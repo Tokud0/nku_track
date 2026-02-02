@@ -92,11 +92,10 @@ class ProjectSpecController extends Controller
         $isGlobalProject = $project->isGlobal();
         
         if ($isGlobalProject) {
-            // Для глобального проекта: только админ, ректор или глобальный менеджер могут создавать ТЗ
+            // Для глобального проекта: админ, глоб. руководитель, глоб. топ-менеджер (редактирование проектов)
             $userGlobalRole = \app\models\GlobalProjectRole::getUserRole($user->_id);
             if ($user->role !== User::ROLE_ADMIN && 
-                $userGlobalRole !== \app\models\GlobalProjectRole::ROLE_RECTOR && 
-                $userGlobalRole !== \app\models\GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+                !in_array($userGlobalRole, [\app\models\GlobalProjectRole::ROLE_RECTOR, \app\models\GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER])) {
                 Yii::$app->session->setFlash('error', 'У вас нет прав для создания ТЗ в глобальном проекте.');
                 return $this->redirect(['global-project/view', 'id' => (string)$projectIdObj]);
             }
@@ -218,11 +217,10 @@ class ProjectSpecController extends Controller
         $isGlobalProject = $project->isGlobal();
         
         if ($isGlobalProject) {
-            // Для глобального проекта: только админ, ректор или глобальный менеджер могут редактировать ТЗ
+            // Для глобального проекта: админ, глоб. руководитель, глоб. топ-менеджер
             $userGlobalRole = \app\models\GlobalProjectRole::getUserRole($user->_id);
             if ($user->role !== User::ROLE_ADMIN && 
-                $userGlobalRole !== \app\models\GlobalProjectRole::ROLE_RECTOR && 
-                $userGlobalRole !== \app\models\GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+                !in_array($userGlobalRole, [\app\models\GlobalProjectRole::ROLE_RECTOR, \app\models\GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER])) {
                 Yii::$app->session->setFlash('error', 'У вас нет прав для редактирования ТЗ в глобальном проекте.');
                 return $this->redirect(['global-project/view', 'id' => $project_id]);
             }

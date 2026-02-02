@@ -19,23 +19,17 @@ $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
 
-// Проверка прав на редактирование
-$canEdit = false;
-if ($user->role === User::ROLE_ADMIN) {
-    $canEdit = true;
-} elseif ($userGlobalRole === GlobalProjectRole::ROLE_RECTOR) {
-    $canEdit = true;
-}
+// Проверка прав на редактирование: админ, глоб. руководитель, глоб. топ-менеджер
+$canEdit = $user->role === User::ROLE_ADMIN || 
+    in_array($userGlobalRole, [GlobalProjectRole::ROLE_RECTOR, GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER]);
 
-// Проверка прав на создание задач
-$canCreateTask = false;
-if ($user->role === User::ROLE_ADMIN) {
-    $canCreateTask = true;
-} elseif ($userGlobalRole === GlobalProjectRole::ROLE_RECTOR) {
-    $canCreateTask = true;
-} elseif ($userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
-    $canCreateTask = true;
-}
+// Проверка прав на создание задач: админ, глоб. руководитель, глоб. топ-менеджер, глоб. менеджер (НЕ глоб. исполнитель)
+$canCreateTask = $user->role === User::ROLE_ADMIN || 
+    in_array($userGlobalRole, [
+        GlobalProjectRole::ROLE_RECTOR,
+        GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER,
+        GlobalProjectRole::ROLE_GLOBAL_MANAGER,
+    ]);
 
 
 // Получение задач (исключаем архивные)
@@ -46,10 +40,9 @@ $tasksQuery = Task::find()
         ['is_archived' => ['$exists' => false]],
     ]]);
 
-// Фильтруем задачи по видимости: глобальные менеджеры и ректор видят все задачи, остальные - только свои
+// Фильтруем задачи по видимости: глоб. руководитель, топ-менеджер, менеджер видят все, глоб. исполнитель - только свои
 if ($user->role !== User::ROLE_ADMIN && 
-    $userGlobalRole !== GlobalProjectRole::ROLE_RECTOR && 
-    $userGlobalRole !== GlobalProjectRole::ROLE_GLOBAL_MANAGER) {
+    !in_array($userGlobalRole, [GlobalProjectRole::ROLE_RECTOR, GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER, GlobalProjectRole::ROLE_GLOBAL_MANAGER])) {
     // Пользователь видит только задачи, на которые он назначен
     $allTasks = Task::find()
         ->where(['project_id' => $model->_id])

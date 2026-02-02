@@ -49,9 +49,20 @@ $brandUrl = Yii::$app->homeUrl;
                 <i class="fas fa-project-diagram" aria-hidden="true"></i> <span>Проекты</span>
             </a>
 
-            <a class="nku-nav__item <?= $isActive('global-project') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/global-project/index'])) ?>">
+            <a class="nku-nav__item <?= ($isActive('global-project') || $isActive('direction')) ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/direction/index'])) ?>">
                 <i class="fas fa-globe" aria-hidden="true"></i> <span>Глобальный проект</span>
             </a>
+
+            <?php if ($user && $user->department_id): ?>
+                <a class="nku-nav__item <?= $isActive('department-staff') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/department-staff/index'])) ?>">
+                    <i class="fas fa-users" aria-hidden="true"></i> <span>Состав подразделения</span>
+                </a>
+            <?php endif; ?>
+            <?php if ($user && $user->department_id && in_array($user->role, [\app\models\User::ROLE_HEAD, \app\models\User::ROLE_TOP_MANAGER], true)): ?>
+                <a class="nku-nav__item <?= $isActive('task-executor-request') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/task-executor-request/index'])) ?>">
+                    <i class="fas fa-user-check" aria-hidden="true"></i> <span>Заявки на прикрепление</span>
+                </a>
+            <?php endif; ?>
 
             <?php if ($user && in_array($user->role, [\app\models\User::ROLE_HEAD, \app\models\User::ROLE_TOP_MANAGER], true)): ?>
                 <a class="nku-nav__item <?= $isActive('roadmap') ? 'is-active' : '' ?>" href="<?= Html::encode(Url::to(['/roadmap/index'])) ?>">

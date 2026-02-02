@@ -250,8 +250,52 @@ if (!isset($isGlobalProject)) {
                                 Один человек из департамента
                             </label>
                         </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="executor_type" id="executor_type_search_any" value="search_any">
+                            <label class="form-check-label" for="executor_type_search_any">
+                                Поиск любого сотрудника
+                            </label>
+                        </div>
                     </div>
                 </div>
+
+                <?php
+                // Поиск любого пользователя (как на global-project-role/create)
+                $searchAnyUsersUrl = \yii\helpers\Url::to(['task/search-users', 'exclude_department_id' => $department ? (string)$department->_id : '']);
+                $selectedAnyExecutors = [];
+                $selectedAnyExecutorsJs = '';
+                ?>
+
+            <div id="executor_search_any_field" style="display: none;">
+                <div class="form-group field-task-executor_any_user_ids any-executor-search-wrapper">
+                    <label class="control-label">Исполнители (поиск по ФИО или email)</label>
+                    <div class="any-executor-search-container">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text"
+                                   id="any-executor-search"
+                                   class="form-control"
+                                   placeholder="Введите минимум 3 символа для поиска..."
+                                   autocomplete="off">
+                            <button type="button"
+                                    class="btn btn-primary"
+                                    id="any-executor-search-button"
+                                    title="Найти пользователей">
+                                <i class="fas fa-search"></i> Найти
+                            </button>
+                            <span class="input-group-text any-search-loader" style="display: none;">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </span>
+                        </div>
+                        <input type="hidden" name="Task[executor_user_ids]" id="any-executor-ids-input" value="[]">
+                        <div id="any-executor-search-results" class="any-executor-search-results"></div>
+                        <div class="alert alert-info mt-2 small">
+                            Сотрудник без подразделения прикрепляется к задаче сразу. Сотрудник из другого подразделения — после одобрения заявки его руководителем или топ-менеджером.
+                        </div>
+                        <div id="selected-any-executors" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
 
                 <?php
                 // Пользователи из подразделения (напрямую привязанные, без департамента)
@@ -419,6 +463,7 @@ if (!isset($isGlobalProject)) {
                     $('#executor_user_from_department_field').hide();
                     $('#executor_subdepartment_field').hide();
                     $('#executor_user_from_subdepartment_field').hide();
+                    $('#executor_search_any_field').hide();
                     $('#task-executor_user_from_department_id').val('');
                     $('#task-executor_subdepartment_id').val('');
                     $('#task-executor_user_from_subdepartment_id').val('');
@@ -431,6 +476,8 @@ if (!isset($isGlobalProject)) {
                         $('#executor_subdepartment_field').show();
                     } else if (type === 'user_from_subdepartment') {
                         $('#executor_user_from_subdepartment_field').show();
+                    } else if (type === 'search_any') {
+                        $('#executor_search_any_field').show();
                     }
                 });
                 
@@ -489,6 +536,180 @@ if (!isset($isGlobalProject)) {
                 ");
             endif;
             ?>
+
+            <?php if (!$isGlobalProject): ?>
+            <script>
+            (function() {
+                var searchUrl = <?= json_encode($searchAnyUsersUrl) ?>;
+                var minLength = 3;
+                document.addEventListener('DOMContentLoaded', function() {
+                    var searchInput = document.getElementById('any-executor-search');
+                    if (!searchInput) return;
+                    var resultsDiv = document.getElementById('any-executor-search-results');
+                    var executorIdsInput = document.getElementById('any-executor-ids-input');
+                    var selectedExecutorsDiv = document.getElementById('selected-any-executors');
+                    var loader = document.querySelector('.any-search-loader');
+                    var searchButton = document.getElementById('any-executor-search-button');
+                    var searchTimeout;
+                    var selectedAnyExecutors = {};
+
+                    if (searchButton) {
+                        searchButton.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            var query = searchInput.value.trim();
+                            if (query.length < minLength) {
+                                resultsDiv.innerHTML = '<div class="any-executor-search-hint">Введите минимум ' + minLength + ' символа для поиска</div>';
+                                resultsDiv.style.display = 'block';
+                                searchInput.focus();
+                                return;
+                            }
+                            performAnySearch(query);
+                        });
+                    }
+
+                    function performAnySearch(query) {
+                        if (!query || query.length < minLength) {
+                            resultsDiv.style.display = 'none';
+                            resultsDiv.innerHTML = '';
+                            if (loader) loader.style.display = 'none';
+                            return;
+                        }
+                        if (loader) loader.style.display = 'block';
+                        resultsDiv.style.display = 'none';
+                        resultsDiv.innerHTML = '';
+                        var url = searchUrl + (searchUrl.indexOf('?') !== -1 ? '&' : '?') + 'q=' + encodeURIComponent(query);
+                        fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' } })
+                            .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Network error')); })
+                            .then(function(response) {
+                                if (loader) loader.style.display = 'none';
+                                resultsDiv.innerHTML = '';
+                                if (response && response.results && response.results.length > 0) {
+                                    response.results.forEach(function(user) {
+                                        if (user && user.id && user.text && !selectedAnyExecutors[user.id]) {
+                                            var item = document.createElement('div');
+                                            item.className = 'any-executor-search-item';
+                                            item.innerHTML = '<i class="fas fa-user me-2"></i>' + user.text;
+                                            item.setAttribute('data-user-id', user.id);
+                                            item.setAttribute('data-user-text', user.text);
+                                            item.addEventListener('click', function(e) {
+                                                e.preventDefault();
+                                                selectAnyExecutor(user.id, user.text);
+                                            });
+                                            resultsDiv.appendChild(item);
+                                        }
+                                    });
+                                    resultsDiv.style.display = resultsDiv.children.length ? 'block' : 'none';
+                                    if (resultsDiv.children.length === 0) {
+                                        resultsDiv.innerHTML = '<div class="any-executor-search-empty">Пользователи не найдены</div>';
+                                        resultsDiv.style.display = 'block';
+                                    }
+                                } else {
+                                    resultsDiv.innerHTML = '<div class="any-executor-search-empty">Пользователи не найдены</div>';
+                                    resultsDiv.style.display = 'block';
+                                }
+                            })
+                            .catch(function() {
+                                if (loader) loader.style.display = 'none';
+                                resultsDiv.innerHTML = '<div class="any-executor-search-error">Ошибка при поиске</div>';
+                                resultsDiv.style.display = 'block';
+                            });
+                    }
+
+                    function selectAnyExecutor(userId, userText) {
+                        if (selectedAnyExecutors[userId]) return;
+                        selectedAnyExecutors[userId] = { id: userId, text: userText };
+                        updateAnyExecutorIdsInput();
+                        searchInput.value = '';
+                        resultsDiv.style.display = 'none';
+                        var badge = document.createElement('span');
+                        badge.className = 'badge bg-primary fs-6 p-2 me-2 mb-2 selected-any-executor-badge';
+                        badge.innerHTML = '<i class="fas fa-user me-2"></i>' + userText +
+                            ' <button type="button" class="btn-close btn-close-white ms-2 remove-any-executor" data-user-id="' + userId + '" style="font-size: 0.7em;"></button>';
+                        selectedExecutorsDiv.appendChild(badge);
+                    }
+
+                    function removeAnyExecutor(userId) {
+                        if (selectedAnyExecutors[userId]) {
+                            delete selectedAnyExecutors[userId];
+                            updateAnyExecutorIdsInput();
+                            var badge = selectedExecutorsDiv.querySelector('.remove-any-executor[data-user-id="' + userId + '"]');
+                            if (badge) badge.closest('.selected-any-executor-badge').remove();
+                        }
+                    }
+
+                    function updateAnyExecutorIdsInput() {
+                        executorIdsInput.value = JSON.stringify(Object.keys(selectedAnyExecutors));
+                    }
+
+                    selectedExecutorsDiv.addEventListener('click', function(e) {
+                        if (e.target && e.target.classList.contains('remove-any-executor')) {
+                            e.preventDefault();
+                            removeAnyExecutor(e.target.getAttribute('data-user-id'));
+                        }
+                    });
+
+                    searchInput.addEventListener('input', function() {
+                        var query = this.value.trim();
+                        clearTimeout(searchTimeout);
+                        if (query.length === 0) { resultsDiv.style.display = 'none'; resultsDiv.innerHTML = ''; return; }
+                        if (query.length < minLength) {
+                            resultsDiv.innerHTML = '<div class="any-executor-search-hint">Введите еще ' + (minLength - query.length) + ' символов</div>';
+                            resultsDiv.style.display = 'block';
+                            return;
+                        }
+                        searchTimeout = setTimeout(function() { performAnySearch(query); }, 250);
+                    });
+
+                    searchInput.addEventListener('focus', function() {
+                        var query = this.value.trim();
+                        if (query.length >= minLength && resultsDiv.children.length) resultsDiv.style.display = 'block';
+                    });
+
+                    document.addEventListener('click', function(e) {
+                        var container = document.querySelector('.any-executor-search-container');
+                        if (container && !container.contains(e.target)) resultsDiv.style.display = 'none';
+                    });
+
+                    var form = searchInput.closest('form');
+                    if (form) {
+                        form.addEventListener('submit', function() {
+                            var searchAnyChecked = document.getElementById('executor_type_search_any') && document.getElementById('executor_type_search_any').checked;
+                            if (!searchAnyChecked) {
+                                executorIdsInput.value = '[]';
+                            } else {
+                                document.getElementById('task-executor_user_from_department_id').value = '';
+                                document.getElementById('task-executor_subdepartment_id').value = '';
+                                var sub = document.getElementById('task-executor_user_from_subdepartment_id');
+                                if (sub) sub.value = '';
+                            }
+                        });
+                    }
+                });
+            })();
+            </script>
+            <style>
+            .any-executor-search-container { position: relative; }
+            .any-executor-search-container .input-group { margin-bottom: 0; }
+            #any-executor-search-results {
+                position: absolute; top: 100%; left: 0; right: 0; z-index: 1000;
+                max-height: 350px; overflow-y: auto; display: none; margin-top: 4px;
+                border: 1px solid #dee2e6; border-radius: 0.375rem; background: #fff;
+                box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+            }
+            .any-executor-search-item {
+                padding: 0.75rem 1rem; cursor: pointer; border-bottom: 1px solid #f0f0f0;
+                transition: background-color 0.2s; color: #212529;
+            }
+            .any-executor-search-item:last-child { border-bottom: none; }
+            .any-executor-search-item:hover { background-color: #e7f1ff; color: #0d6efd; }
+            .any-executor-search-hint, .any-executor-search-empty, .any-executor-search-error {
+                padding: 0.75rem 1rem; text-align: center;
+            }
+            .any-executor-search-hint, .any-executor-search-empty { color: #6c757d; font-style: italic; }
+            .any-executor-search-error { color: #dc3545; }
+            .selected-any-executor-badge { display: inline-flex; align-items: center; font-weight: 500; }
+            </style>
+            <?php endif; ?>
         <?php endif; ?>
 
     </div>

@@ -5,18 +5,25 @@ use yii\helpers\Url;
 use app\models\Task;
 use app\models\User;
 use app\models\Comment;
+use app\models\TaskExecutorRequest;
+use app\models\GlobalProjectRole;
 
 /** @var yii\web\View $this */
 /** @var app\models\Task $model */
+/** @var app\models\TaskExecutorRequest[] $executorRequests */
 
 $this->title = $model->title;
 
 // Проверяем, является ли проект глобальным
 $isGlobalProject = $model->project && $model->project->isGlobal();
+$userGlobalRole = $isGlobalProject ? GlobalProjectRole::getUserRole(Yii::$app->user->identity->_id) : null;
 
 if ($isGlobalProject) {
-    $this->params['breadcrumbs'][] = ['label' => 'Глобальный проект', 'url' => ['global-project/index']];
-    $this->params['breadcrumbs'][] = ['label' => $model->project->title, 'url' => ['global-project/view', 'id' => (string)$model->project_id]];
+    $this->params['breadcrumbs'][] = ['label' => 'Глобальный проект', 'url' => ['direction/index']];
+    $projectUrl = $model->project->direction_id 
+        ? ['project/view', 'id' => (string)$model->project_id] 
+        : ['global-project/view', 'id' => (string)$model->project_id];
+    $this->params['breadcrumbs'][] = ['label' => $model->project->title, 'url' => $projectUrl];
 } else {
     $this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['project/index']];
     $this->params['breadcrumbs'][] = ['label' => $model->project->title, 'url' => ['project/view', 'id' => (string)$model->project_id]];
@@ -25,8 +32,21 @@ $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
 $isExecutor = $user->role === User::ROLE_EXECUTOR && $model->isAssignedToUser($user);
-$canEditTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]) || $isExecutor;
+$isGlobalExecutor = $userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_EXECUTOR && $model->isAssignedToUser($user);
+// Полное редактирование (включая архив/удаление): менеджеры и глоб. руководитель/топ-менеджер/менеджер
+$canEditAll = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]) ||
+    ($isGlobalProject && in_array($userGlobalRole, [GlobalProjectRole::ROLE_RECTOR, GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER, GlobalProjectRole::ROLE_GLOBAL_MANAGER]));
+$canEditTask = $canEditAll || $isExecutor || $isGlobalExecutor; // Глоб. исполнитель может редактировать (ограниченно)
 $canComment = $user->role !== User::ROLE_RECTOR; // Ректор не может комментировать
+
+// Заявки на прикрепление (если не переданы — пустой массив)
+if (!isset($executorRequests)) {
+    $executorRequests = [];
+}
+$hasExecutorRequests = !empty($executorRequests);
+$requestsPending = array_filter($executorRequests, function ($r) { return $r->status === TaskExecutorRequest::STATUS_PENDING; });
+$requestsApproved = array_filter($executorRequests, function ($r) { return $r->status === TaskExecutorRequest::STATUS_APPROVED; });
+$requestsRejected = array_filter($executorRequests, function ($r) { return $r->status === TaskExecutorRequest::STATUS_REJECTED; });
 
 // Получаем комментарии
 $comments = Comment::find()
@@ -58,7 +78,7 @@ $comments = Comment::find()
                         <?php if ($model->project): ?>
                             <?= Html::a(
                                 Html::encode($model->project->title),
-                                $isGlobalProject ? ['global-project/view', 'id' => (string)$model->project_id] : ['project/view', 'id' => (string)$model->project_id],
+                                $isGlobalProject && !$model->project->direction_id ? ['global-project/view', 'id' => (string)$model->project_id] : ['project/view', 'id' => (string)$model->project_id],
                                 ['class' => 'text-decoration-none']
                             ) ?>
                         <?php else: ?>
@@ -71,12 +91,12 @@ $comments = Comment::find()
                         <div class="d-flex gap-2 mb-2">
                             <?= Html::a(
                                 '<i class="fas fa-columns me-2"></i>К доске',
-                                $isGlobalProject ? ['global-project/kanban', 'id' => (string)$model->project_id] : ['project/kanban', 'id' => (string)$model->project_id],
+                                ['project/kanban', 'id' => (string)$model->project_id],
                                 ['class' => 'nku-btn nku-btn--info nku-btn--outline']
                             ) ?>
                             <?= Html::a(
                                 '<i class="fas fa-arrow-left me-2"></i>К проекту',
-                                $isGlobalProject ? ['global-project/view', 'id' => (string)$model->project_id] : ['project/view', 'id' => (string)$model->project_id],
+                                $isGlobalProject && !$model->project->direction_id ? ['global-project/view', 'id' => (string)$model->project_id] : ['project/view', 'id' => (string)$model->project_id],
                                 ['class' => 'nku-btn nku-btn--secondary']
                             ) ?>
                         </div>
@@ -88,7 +108,7 @@ $comments = Comment::find()
                                 ['update', 'id' => (string)$model->_id],
                                 ['class' => 'nku-btn nku-btn--primary']
                             ) ?>
-                            <?php if (in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN])): ?>
+                            <?php if ($canEditAll): ?>
                                 <?php if ($model->is_archived): ?>
                                     <?= Html::a(
                                         '<i class="fas fa-box-open me-2"></i>Разархивировать',
@@ -352,6 +372,83 @@ $comments = Comment::find()
                     </div>
                 </div>
             </div>
+
+            <!-- Заявки на прикрепление (только если были заявки) -->
+            <?php if ($hasExecutorRequests): ?>
+            <div class="nku-card mb-4">
+                <div class="nku-card__header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user-check me-2"></i>
+                        Заявки на прикрепление
+                    </h5>
+                </div>
+                <div class="nku-card__body">
+                    <?php if (!empty($requestsPending)): ?>
+                        <div class="mb-4">
+                            <label class="text-muted mb-2 d-block fw-semibold">
+                                <i class="fas fa-clock me-1"></i> Ожидание одобрения
+                            </label>
+                            <ul class="list-unstyled mb-0">
+                                <?php foreach ($requestsPending as $req): ?>
+                                    <?php $u = $req->user; ?>
+                                    <li class="d-flex align-items-center py-2 border-bottom border-light">
+                                        <span class="nku-badge nku-badge--warning me-2">Ожидает</span>
+                                        <div>
+                                            <span class="fw-semibold"><?= $u ? Html::encode($u->fio) : '—' ?></span>
+                                            <?php if ($u): ?>
+                                                <small class="text-muted d-block"><?= Html::encode($u->email ?? '') ?></small>
+                                            <?php endif; ?>
+                                        </div>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($requestsApproved)): ?>
+                        <div class="mb-4">
+                            <label class="text-muted mb-2 d-block fw-semibold">
+                                <i class="fas fa-check-circle me-1"></i> Одобрены (прикреплены к задаче)
+                            </label>
+                            <ul class="list-unstyled mb-0">
+                                <?php foreach ($requestsApproved as $req): ?>
+                                    <?php $u = $req->user; ?>
+                                    <li class="d-flex align-items-center py-2 border-bottom border-light">
+                                        <span class="nku-badge nku-badge--success me-2">Одобрен</span>
+                                        <div>
+                                            <span class="fw-semibold"><?= $u ? Html::encode($u->fio) : '—' ?></span>
+                                            <?php if ($u): ?>
+                                                <small class="text-muted d-block"><?= Html::encode($u->email ?? '') ?></small>
+                                            <?php endif; ?>
+                                        </div>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($requestsRejected)): ?>
+                        <div>
+                            <label class="text-muted mb-2 d-block fw-semibold">
+                                <i class="fas fa-times-circle me-1"></i> Отклонены
+                            </label>
+                            <ul class="list-unstyled mb-0">
+                                <?php foreach ($requestsRejected as $req): ?>
+                                    <?php $u = $req->user; ?>
+                                    <li class="d-flex align-items-center py-2 border-bottom border-light">
+                                        <span class="nku-badge nku-badge--danger me-2">Отклонён</span>
+                                        <div>
+                                            <span class="fw-semibold"><?= $u ? Html::encode($u->fio) : '—' ?></span>
+                                            <?php if ($u): ?>
+                                                <small class="text-muted d-block"><?= Html::encode($u->email ?? '') ?></small>
+                                            <?php endif; ?>
+                                        </div>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Comments Section -->
             <div class="nku-card">

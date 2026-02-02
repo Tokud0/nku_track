@@ -20,6 +20,8 @@ use app\models\Task;
  * @property \MongoDB\BSON\ObjectId $manager_id
  * @property array|null $manager_ids массив ObjectId руководителей (для глобальных проектов)
  * @property \MongoDB\BSON\ObjectId $department_id ссылка на подразделение
+ * @property \MongoDB\BSON\ObjectId|null $direction_id ссылка на направление (для глобальных проектов)
+ * @property bool $is_legacy флаг для скрытия старых глобальных проектов
  * @property int $progress процент выполнения (0-100)
  * @property \MongoDB\BSON\UTCDateTime|null $last_report_date
  * @property \MongoDB\BSON\UTCDateTime|null $next_report_deadline
@@ -58,6 +60,8 @@ class Project extends ActiveRecord
             'manager_id',
             'manager_ids',
             'department_id',
+            'direction_id',
+            'is_legacy',
             'progress',
             'last_report_date',
             'next_report_deadline',
@@ -99,6 +103,10 @@ class Project extends ActiveRecord
             [['start_date', 'end_date', 'last_report_date', 'next_report_deadline', 'created_at', 'updated_at', 'start_date_str', 'end_date_str'], 'safe'],
             // Для глобальных проектов требуется хотя бы один руководитель
             [['manager_ids'], 'validateManagers', 'skipOnEmpty' => false],
+            // Направление для глобальных проектов
+            [['direction_id'], 'safe'],
+            [['is_legacy'], 'boolean'],
+            [['is_legacy'], 'default', 'value' => false],
         ];
     }
 
@@ -135,6 +143,8 @@ class Project extends ActiveRecord
             'status' => 'Статус',
             'manager_id' => 'Руководитель',
             'department_id' => 'Подразделение',
+            'direction_id' => 'Направление',
+            'is_legacy' => 'Устаревший проект',
             'progress' => 'Прогресс (%)',
             'last_report_date' => 'Дата последнего отчёта',
             'next_report_deadline' => 'Следующий дедлайн',
@@ -277,6 +287,26 @@ class Project extends ActiveRecord
     public function isGlobal()
     {
         return $this->department_id === null;
+    }
+
+    /**
+     * Проверяет, является ли проект устаревшим (legacy)
+     *
+     * @return bool
+     */
+    public function isLegacy()
+    {
+        return $this->is_legacy === true;
+    }
+
+    /**
+     * Gets direction of the project (for global projects)
+     *
+     * @return \yii\mongodb\ActiveQuery
+     */
+    public function getDirection()
+    {
+        return $this->hasOne(Direction::class, ['_id' => 'direction_id']);
     }
 
     /**

@@ -6,20 +6,29 @@ use app\models\Project;
 use app\models\ProjectSpec;
 use app\models\Task;
 use app\models\User;
+use app\models\GlobalProjectRole;
 
 /** @var yii\web\View $this */
 /** @var app\models\Project $model */
 /** @var app\models\ProjectSpec $spec */
+/** @var app\models\Task[] $tasks */
+/** @var string|null $userGlobalRole */
 
 $this->title = $model->title;
 $this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['index']];
 $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
+$userGlobalRole = $userGlobalRole ?? \app\models\GlobalProjectRole::getUserRole($user->_id);
 
 // Проверка прав на редактирование
 $canEdit = false;
-if ($user->role === User::ROLE_ADMIN) {
+if ($model->isGlobal()) {
+    // Глобальный проект: админ, глоб. руководитель, глоб. топ-менеджер
+    $canEdit = $user->role === User::ROLE_ADMIN || 
+        $userGlobalRole === GlobalProjectRole::ROLE_RECTOR || 
+        $userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER;
+} elseif ($user->role === User::ROLE_ADMIN) {
     $canEdit = true;
 } elseif ($user->role === User::ROLE_HEAD) {
     if ($model->department_id && $user->department_id &&
@@ -27,50 +36,52 @@ if ($user->role === User::ROLE_ADMIN) {
         $canEdit = true;
     }
 } elseif ($user->role === User::ROLE_RECTOR) {
-    // Ректор может только просматривать, не может редактировать
     $canEdit = false;
 } elseif ($user->role === User::ROLE_TOP_MANAGER) {
-    // Топ-менеджер может редактировать проекты своего подразделения
     if ($model->department_id && $user->department_id &&
         (string)$model->department_id === (string)$user->department_id) {
         $canEdit = true;
     }
 }
-// Менеджер не может редактировать проекты, только задачи
 
 // Проверка прав на работу с ТЗ
 $canWorkWithSpec = false;
-if ($user->role === User::ROLE_ADMIN) {
+if ($model->isGlobal()) {
+    $canWorkWithSpec = $canEdit;
+} elseif ($user->role === User::ROLE_ADMIN) {
     $canWorkWithSpec = true;
 } elseif ($user->role === User::ROLE_TOP_MANAGER) {
-    // Топ-менеджер может работать с ТЗ проектов своего подразделения
     if ($model->department_id && $user->department_id &&
         (string)$model->department_id === (string)$user->department_id) {
         $canWorkWithSpec = true;
     }
 } elseif ($user->role === User::ROLE_HEAD) {
-    // Руководитель может работать с ТЗ всех проектов своего подразделения
     if ($model->department_id && $user->department_id &&
         (string)$model->department_id === (string)$user->department_id) {
         $canWorkWithSpec = true;
     }
 }
-// Ректор может только просматривать ТЗ
-if ($user->role === User::ROLE_RECTOR) {
+if ($user->role === User::ROLE_RECTOR && !$model->isGlobal()) {
     $canWorkWithSpec = false;
 }
 
 // Проверка прав на создание задач
-$canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
+if ($model->isGlobal()) {
+    // Глобальный проект: админ, глоб. руководитель, глоб. топ-менеджер, глоб. менеджер (НЕ глоб. исполнитель)
+    $canCreateTask = $user->role === User::ROLE_ADMIN || 
+        in_array($userGlobalRole, [
+            GlobalProjectRole::ROLE_RECTOR,
+            GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER,
+            GlobalProjectRole::ROLE_GLOBAL_MANAGER,
+        ]);
+} else {
+    $canCreateTask = in_array($user->role, [User::ROLE_MANAGER, User::ROLE_TOP_MANAGER, User::ROLE_HEAD, User::ROLE_ADMIN]);
+}
 
-// Получение задач (исключаем архивные)
-$tasks = Task::find()
-    ->where(['project_id' => $model->_id])
-    ->andWhere(['$or' => [
-        ['is_archived' => false],
-        ['is_archived' => ['$exists' => false]],
-    ]])
-    ->all();
+// Задачи переданы из контроллера (уже отфильтрованы для прикреплённых из другого подразделения)
+if (!isset($tasks)) {
+    $tasks = [];
+}
 $tasksCount = count($tasks);
 $tasksByStatus = [
     Task::STATUS_TODO => 0,
@@ -108,7 +119,7 @@ foreach ($tasks as $task) {
                 <div class="text-end">
                     <?= Html::a(
                         '<i class="fas fa-arrow-left me-2"></i>Назад',
-                        ['index'],
+                        $model->isGlobal() ? ($model->direction_id ? ['/direction/view', 'id' => (string)$model->direction_id] : ['/direction/index']) : ['index'],
                         ['class' => 'nku-btn nku-btn--secondary mb-2']
                     ) ?>
                     <?= Html::a(

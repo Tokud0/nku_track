@@ -144,15 +144,18 @@ class Task extends ActiveRecord
     }
 
     /**
-     * Валидация исполнителя: должен быть указан только один тип назначения
+     * Валидация исполнителя: один из типов назначения (один из трёх полей ИЛИ executor_user_ids для поиска любого)
      */
     public function validateExecutor($attribute, $params)
     {
+        $hasSearchAny = !empty($this->executor_user_ids) && is_array($this->executor_user_ids);
+        if ($hasSearchAny) {
+            return; // «Поиск любого сотрудника» — исполнители в executor_user_ids (и/или заявки)
+        }
         $executorTypesCount = 0;
         if ($this->executor_user_from_department_id) $executorTypesCount++;
         if ($this->executor_subdepartment_id) $executorTypesCount++;
         if ($this->executor_user_from_subdepartment_id) $executorTypesCount++;
-        
         if ($executorTypesCount > 1) {
             $this->addError('executor_user_from_department_id', 'Можно указать только один тип назначения исполнителя.');
         }
@@ -423,6 +426,15 @@ class Task extends ActiveRecord
         // Если назначен пользователь из департамента
         if ($this->executor_user_from_subdepartment_id) {
             $user = User::findOne(['_id' => $this->executor_user_from_subdepartment_id]);
+            if ($user) {
+                $users[] = $user;
+            }
+        }
+
+        // Исполнители из одобренных заявок (прикрепление из другого подразделения)
+        $approvedRequests = TaskExecutorRequest::getApprovedByTask($this->_id);
+        foreach ($approvedRequests as $req) {
+            $user = User::findOne(['_id' => $req->user_id]);
             if ($user) {
                 $users[] = $user;
             }

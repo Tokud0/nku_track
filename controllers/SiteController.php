@@ -135,7 +135,7 @@ class SiteController extends Controller
                     ->all();
             }
             
-            // Для исполнителя показываем только его задачи
+            // Для исполнителя показываем только его задачи (в т.ч. прикреплённые к задачам других подразделений)
             if ($user->role === \app\models\User::ROLE_EXECUTOR) {
                 $userTasks = [];
                 foreach ($allTasks as $task) {
@@ -143,8 +143,36 @@ class SiteController extends Controller
                         $userTasks[] = $task;
                     }
                 }
+                // Добавляем задачи из проектов других подразделений, где пользователь прикреплён
+                $userTaskIds = array_map(function ($t) { return (string)$t->_id; }, $userTasks);
+                $extraTasks = \app\models\Task::find()
+                    ->where([
+                        '$or' => [
+                            ['executor_user_ids' => $user->_id],
+                            ['executor_user_from_department_id' => $user->_id],
+                            ['executor_user_from_subdepartment_id' => $user->_id],
+                        ],
+                    ])
+                    ->andWhere(['project_id' => ['$nin' => $projectIdsObj]])
+                    ->all();
+                $approvedReqs = \app\models\TaskExecutorRequest::find()
+                    ->where(['user_id' => $user->_id, 'status' => \app\models\TaskExecutorRequest::STATUS_APPROVED])
+                    ->all();
+                $extraTaskIds = array_map(function ($r) { return $r->task_id; }, $approvedReqs);
+                if (!empty($extraTaskIds)) {
+                    $fromReqs = \app\models\Task::find()
+                        ->where(['_id' => ['$in' => $extraTaskIds]])
+                        ->andWhere(['project_id' => ['$nin' => $projectIdsObj]])
+                        ->all();
+                    $extraTasks = array_merge($extraTasks, $fromReqs);
+                }
+                foreach ($extraTasks as $task) {
+                    if (!in_array((string)$task->_id, $userTaskIds, true)) {
+                        $userTasks[] = $task;
+                        $userTaskIds[] = (string)$task->_id;
+                    }
+                }
                 $data['totalTasks'] = count($userTasks);
-                // Сортируем по дате создания
                 usort($userTasks, function($a, $b) {
                     $aTime = $a->created_at instanceof \MongoDB\BSON\UTCDateTime ? $a->created_at->toDateTime()->getTimestamp() : 0;
                     $bTime = $b->created_at instanceof \MongoDB\BSON\UTCDateTime ? $b->created_at->toDateTime()->getTimestamp() : 0;
@@ -152,29 +180,100 @@ class SiteController extends Controller
                 });
                 $data['myTasks'] = array_slice($userTasks, 0, 5);
             } else {
-                $data['totalTasks'] = count($allTasks);
-                // Сортируем по дате создания
-                usort($allTasks, function($a, $b) {
+                // Для не-исполнителя: последние задачи подразделения + задачи, где пользователь прикреплён (из других подразделений)
+                $recentTasksList = $allTasks;
+                $extraTasks = \app\models\Task::find()
+                    ->where([
+                        '$or' => [
+                            ['executor_user_ids' => $user->_id],
+                            ['executor_user_from_department_id' => $user->_id],
+                            ['executor_user_from_subdepartment_id' => $user->_id],
+                        ],
+                    ])
+                    ->andWhere(['project_id' => ['$nin' => $projectIdsObj]])
+                    ->all();
+                $approvedReqs = \app\models\TaskExecutorRequest::find()
+                    ->where(['user_id' => $user->_id, 'status' => \app\models\TaskExecutorRequest::STATUS_APPROVED])
+                    ->all();
+                $extraIds = array_map(function ($r) { return $r->task_id; }, $approvedReqs);
+                if (!empty($extraIds)) {
+                    $fromReqs = \app\models\Task::find()
+                        ->where(['_id' => ['$in' => $extraIds]])
+                        ->andWhere(['project_id' => ['$nin' => $projectIdsObj]])
+                        ->all();
+                    $recentTasksList = array_merge($recentTasksList, $fromReqs);
+                }
+                $recentTasksList = array_merge($recentTasksList, $extraTasks);
+                $recentTasksList = array_unique($recentTasksList, SORT_REGULAR);
+                $data['totalTasks'] = count($recentTasksList);
+                usort($recentTasksList, function($a, $b) {
                     $aTime = $a->created_at instanceof \MongoDB\BSON\UTCDateTime ? $a->created_at->toDateTime()->getTimestamp() : 0;
                     $bTime = $b->created_at instanceof \MongoDB\BSON\UTCDateTime ? $b->created_at->toDateTime()->getTimestamp() : 0;
                     return $bTime - $aTime;
                 });
-                $data['recentTasks'] = array_slice($allTasks, 0, 5);
+                $data['recentTasks'] = array_slice($recentTasksList, 0, 5);
             }
             
-            // Последние проекты
-            $data['recentProjects'] = \app\models\Project::find()
+            // Последние проекты (подразделения + проекты, где пользователь прикреплён к задаче)
+            $recentProjects = \app\models\Project::find()
                 ->where(['department_id' => $user->department_id])
                 ->orderBy(['created_at' => SORT_DESC])
                 ->limit(5)
                 ->all();
+            $data['recentProjects'] = $recentProjects;
         } else {
-            $data['totalProjects'] = 0;
+            // Пользователь без подразделения: показываем только задачи, где он прикреплён, и их проекты
+            $userTasks = [];
+            $tasksWithMe = \app\models\Task::find()
+                ->where([
+                    '$or' => [
+                        ['executor_user_ids' => $user->_id],
+                        ['executor_user_from_department_id' => $user->_id],
+                        ['executor_user_from_subdepartment_id' => $user->_id],
+                    ],
+                ])
+                ->all();
+            foreach ($tasksWithMe as $t) {
+                if ($t->isAssignedToUser($user)) {
+                    $userTasks[] = $t;
+                }
+            }
+            $approvedReqs = \app\models\TaskExecutorRequest::find()
+                ->where(['user_id' => $user->_id, 'status' => \app\models\TaskExecutorRequest::STATUS_APPROVED])
+                ->all();
+            foreach ($approvedReqs as $req) {
+                $task = \app\models\Task::findOne(['_id' => $req->task_id]);
+                if ($task && $task->isAssignedToUser($user)) {
+                    $userTasks[] = $task;
+                }
+            }
+            $userTasks = array_unique($userTasks, SORT_REGULAR);
+            usort($userTasks, function($a, $b) {
+                $aTime = $a->created_at instanceof \MongoDB\BSON\UTCDateTime ? $a->created_at->toDateTime()->getTimestamp() : 0;
+                $bTime = $b->created_at instanceof \MongoDB\BSON\UTCDateTime ? $b->created_at->toDateTime()->getTimestamp() : 0;
+                return $bTime - $aTime;
+            });
+            $projectIdsFromTasks = [];
+            foreach ($userTasks as $t) {
+                if ($t->project_id) {
+                    $projectIdsFromTasks[(string)$t->project_id] = true;
+                }
+            }
+            $projectIdsFromTasks = array_keys($projectIdsFromTasks);
+            $data['totalProjects'] = count($projectIdsFromTasks);
             $data['activeProjects'] = 0;
-            $data['totalTasks'] = 0;
-            $data['recentProjects'] = [];
-            $data['recentTasks'] = [];
-            $data['myTasks'] = [];
+            $data['totalTasks'] = count($userTasks);
+            $data['myTasks'] = array_slice($userTasks, 0, 5);
+            $data['recentTasks'] = $data['myTasks'];
+            $data['recentProjects'] = !empty($projectIdsFromTasks)
+                ? \app\models\Project::find()
+                    ->where(['_id' => ['$in' => array_map(function ($id) {
+                        try { return new \MongoDB\BSON\ObjectId($id); } catch (\Exception $e) { return null; }
+                    }, $projectIdsFromTasks)]])
+                    ->orderBy(['created_at' => SORT_DESC])
+                    ->limit(5)
+                    ->all()
+                : [];
         }
         
         return $this->render('index', $data);
