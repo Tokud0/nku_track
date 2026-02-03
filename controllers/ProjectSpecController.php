@@ -225,12 +225,6 @@ class ProjectSpecController extends Controller
                 return $this->redirect(['global-project/view', 'id' => $project_id]);
             }
         } else {
-            // ТЗ можно редактировать только если проект в статусе draft
-            if ($project->status !== Project::STATUS_DRAFT) {
-                Yii::$app->session->setFlash('error', 'ТЗ можно редактировать только для проектов в статусе "Черновик".');
-                return $this->redirect(['project/view', 'id' => $project_id]);
-            }
-            
             // Ректор может только просматривать, не может редактировать ТЗ
             if ($user->role === User::ROLE_RECTOR) {
                 Yii::$app->session->setFlash('error', 'Ректор может только просматривать технические задания.');

@@ -16,6 +16,25 @@ $this->params['breadcrumbs'][] = ['label' => $project->title, 'url' => ['project
 $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
+$userGlobalRole = \app\models\GlobalProjectRole::getUserRole($user->_id);
+
+// Проверка прав на работу с ТЗ (как в project/view)
+$canWorkWithSpec = false;
+if ($project->isGlobal()) {
+    $canEdit = $user->role === User::ROLE_ADMIN ||
+        $userGlobalRole === \app\models\GlobalProjectRole::ROLE_RECTOR ||
+        $userGlobalRole === \app\models\GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER;
+    $canWorkWithSpec = $canEdit;
+} elseif ($user->role === User::ROLE_ADMIN) {
+    $canWorkWithSpec = true;
+} elseif (in_array($user->role, [User::ROLE_TOP_MANAGER, User::ROLE_HEAD])) {
+    if ($project->department_id && $user->department_id &&
+        (string)$project->department_id === (string)$user->department_id) {
+        $canWorkWithSpec = true;
+    }
+} elseif ($user->role === User::ROLE_MANAGER && (string)$project->manager_id === (string)$user->_id) {
+    $canWorkWithSpec = true;
+}
 ?>
 <div class="project-spec-view">
 
@@ -24,7 +43,7 @@ $user = Yii::$app->user->identity;
 
     <p>
         <?= Html::a('Назад к проекту', ['project/view', 'id' => (string)$project->_id], ['class' => 'btn btn-secondary']) ?>
-        <?php if ($user->role === User::ROLE_MANAGER && (string)$project->manager_id === (string)$user->_id && $project->status === Project::STATUS_DRAFT): ?>
+        <?php if ($canWorkWithSpec): ?>
             <?= Html::a('Редактировать ТЗ', ['update', 'project_id' => (string)$project->_id], ['class' => 'btn btn-primary']) ?>
         <?php endif; ?>
     </p>

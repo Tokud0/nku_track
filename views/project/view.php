@@ -342,13 +342,11 @@ foreach ($tasks as $task) {
                     <?php if ($canWorkWithSpec): ?>
                         <div>
                             <?php if ($spec): ?>
-                                <?php if ($model->status === Project::STATUS_DRAFT): ?>
-                                    <?= Html::a(
-                                        '<i class="fas fa-edit me-2"></i>Редактировать ТЗ',
-                                        ['project-spec/update', 'project_id' => (string)$model->_id],
-                                        ['class' => 'nku-btn nku-btn--sm nku-btn--primary']
-                                    ) ?>
-                                <?php endif; ?>
+                                <?= Html::a(
+                                    '<i class="fas fa-edit me-2"></i>Редактировать ТЗ',
+                                    ['project-spec/update', 'project_id' => (string)$model->_id],
+                                    ['class' => 'nku-btn nku-btn--sm nku-btn--primary']
+                                ) ?>
                             <?php else: ?>
                                 <?= Html::a(
                                     '<i class="fas fa-plus me-2"></i>Создать ТЗ',
