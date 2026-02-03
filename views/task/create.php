@@ -51,6 +51,19 @@ if (!isset($isGlobalProject)) {
 
             <?= $form->field($model, 'description')->textarea(['rows' => 6]) ?>
 
+            <?php
+            $milestones = $milestones ?? [];
+            if (!empty($milestones)):
+                $milestoneOptions = ['' => '— Не привязан к этапу —'];
+                foreach ($milestones as $idx => $m) {
+                    $name = $m['name'] ?? 'Этап ' . ($idx + 1);
+                    $deadline = isset($m['deadline']) && $m['deadline'] ? ' (до ' . $m['deadline'] . ')' : '';
+                    $milestoneOptions[$idx] = $name . $deadline;
+                }
+            ?>
+                <?= $form->field($model, 'milestone_index')->dropDownList($milestoneOptions, ['prompt' => '— Не привязан к этапу —']) ?>
+            <?php endif; ?>
+
             <div class="row">
                 <div class="col-md-6">
                     <?= $form->field($model, 'status')->dropDownList([

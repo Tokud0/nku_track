@@ -262,7 +262,7 @@ class ProjectSpecController extends Controller
             }
         }
         
-        $model = ProjectSpec::findOne(['project_id' => $project_id]);
+        $model = ProjectSpec::findOne(['project_id' => $projectIdObj]);
         if (!$model) {
             throw new NotFoundHttpException('Техническое задание не найдено.');
         }

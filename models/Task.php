@@ -28,6 +28,7 @@ use app\models\Department;
  * @property \MongoDB\BSON\UTCDateTime|null $due_date
  * @property int $progress 0–100%
  * @property array $subtasks массив подзадач (to-do лист) [['text' => string, 'completed' => bool], ...]
+ * @property int|null $milestone_index индекс этапа из ТЗ проекта (ProjectSpec::milestones)
  * @property array $attachments массив вложений
  * @property bool $is_archived флаг архивации задачи
  * @property \MongoDB\BSON\UTCDateTime $created_at
@@ -77,6 +78,7 @@ class Task extends ActiveRecord
             'due_date',
             'progress',
             'subtasks',
+            'milestone_index',
             'attachments',
             'is_archived',
             'created_at',
@@ -106,6 +108,8 @@ class Task extends ActiveRecord
                 self::PRIORITY_CRITICAL,
             ]],
             [['progress'], 'integer', 'min' => 0, 'max' => 100],
+            [['milestone_index'], 'integer', 'min' => 0, 'skipOnEmpty' => true],
+            [['milestone_index'], 'default', 'value' => null],
             [['executor_user_from_department_id', 'executor_subdepartment_id', 'executor_user_from_subdepartment_id'], 'validateExecutor'],
             [['executor_user_ids', 'responsible_user_ids', 'attachments', 'subtasks', 'responsible_user_id'], 'safe'],
             [['is_archived'], 'boolean'],
@@ -136,6 +140,7 @@ class Task extends ActiveRecord
             'start_date' => 'Дата начала',
             'due_date' => 'Срок выполнения',
             'progress' => 'Прогресс (%)',
+            'milestone_index' => 'Этап (из ТЗ)',
             'attachments' => 'Вложения',
             'is_archived' => 'В архиве',
             'created_at' => 'Дата создания',
@@ -278,6 +283,25 @@ class Task extends ActiveRecord
     public function getProject()
     {
         return $this->hasOne(Project::class, ['_id' => 'project_id']);
+    }
+
+    /**
+     * Название этапа из ТЗ (по milestone_index)
+     * @return string|null
+     */
+    public function getMilestoneName()
+    {
+        if ($this->milestone_index === null || $this->milestone_index === '') {
+            return null;
+        }
+        $spec = $this->project ? \app\models\ProjectSpec::findOne(['project_id' => $this->project_id]) : null;
+        if (!$spec || !is_array($spec->milestones) || !isset($spec->milestones[(int)$this->milestone_index])) {
+            return null;
+        }
+        $m = $spec->milestones[(int)$this->milestone_index];
+        $name = $m['name'] ?? 'Этап ' . ((int)$this->milestone_index + 1);
+        $deadline = isset($m['deadline']) && $m['deadline'] ? ' (до ' . $m['deadline'] . ')' : '';
+        return $name . $deadline;
     }
 
     /**

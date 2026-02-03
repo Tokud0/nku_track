@@ -69,6 +69,25 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
 
         <?= $form->field($model, 'description')->textarea(['rows' => 6]) ?>
 
+        <?php
+        $milestones = $milestones ?? [];
+        if (!empty($milestones)):
+            $milestoneOptions = ['' => '— Не привязан к этапу —'];
+            foreach ($milestones as $idx => $m) {
+                $name = $m['name'] ?? 'Этап ' . ($idx + 1);
+                $deadline = isset($m['deadline']) && $m['deadline'] ? ' (до ' . $m['deadline'] . ')' : '';
+                $milestoneOptions[$idx] = $name . $deadline;
+            }
+            if (!$isExecutor && $canEditAll): ?>
+                <?= $form->field($model, 'milestone_index')->dropDownList($milestoneOptions, ['prompt' => '— Не привязан к этапу —']) ?>
+            <?php else: ?>
+                <div class="form-group">
+                    <label class="control-label">Этап (из ТЗ)</label>
+                    <div><?= Html::encode($model->getMilestoneName() ?: '— Не привязан —') ?></div>
+                </div>
+            <?php endif;
+        endif; ?>
+
         <div class="row">
             <div class="col-md-6">
                 <?= $form->field($model, 'status')->dropDownList([

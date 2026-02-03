@@ -516,6 +516,16 @@ foreach ($tasks as $task) {
                                 ['class' => 'nku-btn nku-btn--sm nku-btn--success']
                             ) ?>
                         <?php endif; ?>
+                        <?= Html::a(
+                            '<i class="fas fa-list me-2"></i>Список задач',
+                            ['tasks-list', 'id' => (string)$model->_id],
+                            ['class' => 'nku-btn nku-btn--sm nku-btn--info']
+                        ) ?>
+                        <?= Html::a(
+                            '<i class="fas fa-columns me-2"></i>Канбан-доска',
+                            ['kanban', 'id' => (string)$model->_id],
+                            ['class' => 'nku-btn nku-btn--sm nku-btn--primary']
+                        ) ?>
                         <?php 
                         // Подсчитываем количество архивных задач
                         $archivedTasksCount = Task::find()
@@ -560,11 +570,18 @@ foreach ($tasks as $task) {
                         </div>
 
                         <div class="text-center">
-                            <?= Html::a(
-                                '<i class="fas fa-columns me-2"></i>Перейти к канбан-доске для управления задачами',
-                                ['kanban', 'id' => (string)$model->_id],
-                                ['class' => 'nku-btn nku-btn--lg nku-btn--primary']
-                            ) ?>
+                            <div class="d-flex gap-3 justify-content-center flex-wrap">
+                                <?= Html::a(
+                                    '<i class="fas fa-list me-2"></i>Список задач',
+                                    ['tasks-list', 'id' => (string)$model->_id],
+                                    ['class' => 'nku-btn nku-btn--lg nku-btn--info']
+                                ) ?>
+                                <?= Html::a(
+                                    '<i class="fas fa-columns me-2"></i>Канбан-доска',
+                                    ['kanban', 'id' => (string)$model->_id],
+                                    ['class' => 'nku-btn nku-btn--lg nku-btn--primary']
+                                ) ?>
+                            </div>
                         </div>
                     <?php else: ?>
                         <div class="nku-empty">

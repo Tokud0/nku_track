@@ -5,6 +5,7 @@ namespace app\controllers;
 use Yii;
 use app\models\Task;
 use app\models\Project;
+use app\models\ProjectSpec;
 use app\models\User;
 use app\models\GlobalProjectRole;
 use app\models\TaskExecutorRequest;
@@ -105,6 +106,10 @@ class TaskController extends Controller
         $model->progress = 0;
         $model->attachments = [];
 
+        // Этапы из ТЗ проекта для выбора при создании задачи
+        $spec = ProjectSpec::findOne(['project_id' => $projectIdObj]);
+        $milestones = (is_array($spec->milestones ?? null)) ? $spec->milestones : [];
+
         // Обрабатываем executor_user_ids до load() (глобальный проект и «поиск любого» в обычном)
         $executorUserIdsData = null;
         if (!empty($_POST['Task']['executor_user_ids'])) {
@@ -161,6 +166,12 @@ class TaskController extends Controller
                 $model->due_date = new \MongoDB\BSON\UTCDateTime(strtotime($_POST['Task']['due_date']) * 1000);
             } else {
                 $model->due_date = null;
+            }
+            // Этап из ТЗ
+            if (isset($_POST['Task']['milestone_index']) && $_POST['Task']['milestone_index'] !== '') {
+                $model->milestone_index = (int)$_POST['Task']['milestone_index'];
+            } else {
+                $model->milestone_index = null;
             }
             // Обрабатываем исполнителей в зависимости от типа проекта
             if ($isGlobalProject) {
@@ -269,6 +280,7 @@ class TaskController extends Controller
             'model' => $model,
             'project' => $project,
             'isGlobalProject' => $isGlobalProject,
+            'milestones' => $milestones,
         ]);
     }
 
@@ -290,6 +302,10 @@ class TaskController extends Controller
         // Проверяем, является ли проект глобальным
         $isGlobalProject = $model->project && $model->project->isGlobal();
         
+        // Этапы из ТЗ проекта для выбора при редактировании
+        $spec = $model->project_id ? ProjectSpec::findOne(['project_id' => $model->project_id]) : null;
+        $milestones = ($spec && is_array($spec->milestones ?? null)) ? $spec->milestones : [];
+
         // Обрабатываем executor_user_ids до load() (глобальный и «поиск любого» при редактировании)
         $executorUserIdsData = null;
         if (!empty($_POST['Task']['executor_user_ids'])) {
@@ -349,6 +365,12 @@ class TaskController extends Controller
                 $model->due_date = new \MongoDB\BSON\UTCDateTime(strtotime($_POST['Task']['due_date']) * 1000);
             } else {
                 $model->due_date = null;
+            }
+            // Этап из ТЗ
+            if (isset($_POST['Task']['milestone_index']) && $_POST['Task']['milestone_index'] !== '') {
+                $model->milestone_index = (int)$_POST['Task']['milestone_index'];
+            } else {
+                $model->milestone_index = null;
             }
             // Обрабатываем исполнителей в зависимости от типа проекта
             if ($isGlobalProject) {
@@ -495,6 +517,7 @@ class TaskController extends Controller
         return $this->render('update', [
             'model' => $model,
             'project' => $model->project,
+            'milestones' => $milestones,
         ]);
     }
 

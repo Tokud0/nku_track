@@ -85,6 +85,12 @@ $comments = Comment::find()
                             <span class="text-danger">Проект удален</span>
                         <?php endif; ?>
                     </p>
+                    <?php if ($model->getMilestoneName()): ?>
+                        <p class="text-muted mb-0 mt-1">
+                            <i class="fas fa-flag-checkered me-2"></i>
+                            <span><?= Html::encode($model->getMilestoneName()) ?></span>
+                        </p>
+                    <?php endif; ?>
                 </div>
                 <div class="text-end">
                     <?php if ($model->project): ?>

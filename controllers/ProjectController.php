@@ -384,6 +384,44 @@ class ProjectController extends Controller
     }
 
     /**
+     * Список задач проекта (отдельной страницей)
+     * @param string $id
+     * @return mixed
+     * @throws NotFoundHttpException
+     */
+    public function actionTasksList($id)
+    {
+        $model = $this->findModel($id);
+        $user = Yii::$app->user->identity;
+
+        // Проверка доступа к проекту
+        $this->checkAccess($model);
+
+        // Задачи (не архивные); прикреплённые из другого подразделения видят только свои
+        $tasksQuery = Task::find()
+            ->where(['project_id' => $model->_id])
+            ->andWhere(['$or' => [
+                ['is_archived' => false],
+                ['is_archived' => ['$exists' => false]],
+            ]])
+            ->orderBy(['created_at' => SORT_ASC]);
+        $tasks = $tasksQuery->all();
+        if (!$model->isGlobal() && $model->department_id && $user->role !== User::ROLE_ADMIN && $user->role !== User::ROLE_RECTOR) {
+            $inProjectDepartment = $user->department_id && (string)$user->department_id === (string)$model->department_id;
+            if (!$inProjectDepartment) {
+                $tasks = array_values(array_filter($tasks, function ($task) use ($user) {
+                    return $task->isAssignedToUser($user);
+                }));
+            }
+        }
+
+        return $this->render('tasks-list', [
+            'model' => $model,
+            'tasks' => $tasks,
+        ]);
+    }
+
+    /**
      * Показывает архив задач проекта
      * @param string $id
      * @return mixed
@@ -450,7 +488,11 @@ class ProjectController extends Controller
         // Проверка доступа
         $this->checkAccess($model);
         
-        // Получаем задачи проекта (не архивные) с их подзадачами
+        // Этапы из ТЗ (ProjectSpec milestones)
+        $spec = ProjectSpec::findOne(['project_id' => $model->_id]);
+        $milestones = is_array($spec->milestones ?? null) ? $spec->milestones : [];
+        
+        // Все задачи проекта (не архивные)
         $tasks = Task::find()
             ->where([
                 'project_id' => $model->_id,
@@ -462,31 +504,52 @@ class ProjectController extends Controller
             ->orderBy(['created_at' => SORT_ASC])
             ->all();
         
-        // Формируем данные для mind map: задача -> её подзадачи
-        $tasksData = [];
-        foreach ($tasks as $task) {
-            $subtasks = [];
-            if (is_array($task->subtasks)) {
-                foreach ($task->subtasks as $subtask) {
-                    // Показываем все подзадачи, включая выполненные
-                    $subtasks[] = [
-                        'text' => trim($subtask['text'] ?? ''),
-                        'completed' => isset($subtask['completed']) && $subtask['completed'] === true,
+        // Группируем задачи по этапу: этап (с метрикой) -> задачи (подзадачи не показываем)
+        $stagesData = [];
+        foreach ($milestones as $idx => $m) {
+            $stageName = $m['name'] ?? 'Этап ' . ($idx + 1);
+            $deadline = isset($m['deadline']) && $m['deadline'] ? ' (до ' . $m['deadline'] . ')' : '';
+            $stageTasks = [];
+            foreach ($tasks as $task) {
+                $mi = $task->milestone_index;
+                if ($mi !== null && $mi !== '' && (int)$mi === (int)$idx) {
+                    $stageTasks[] = [
+                        'id' => (string)$task->_id,
+                        'title' => $task->title,
+                        'description' => $task->description ?? '',
                     ];
                 }
             }
-            
-            $tasksData[] = [
-                'id' => (string)$task->_id,
-                'title' => $task->title,
-                'description' => $task->description ?? '',
-                'subtasks' => $subtasks,
+            $stagesData[] = [
+                'id' => 'stage_' . $idx,
+                'index' => $idx,
+                'name' => $stageName . $deadline,
+                'tasks' => $stageTasks,
+            ];
+        }
+        // Задачи без этапа
+        $noStageTasks = [];
+        foreach ($tasks as $task) {
+            if ($task->milestone_index === null || $task->milestone_index === '') {
+                $noStageTasks[] = [
+                    'id' => (string)$task->_id,
+                    'title' => $task->title,
+                    'description' => $task->description ?? '',
+                ];
+            }
+        }
+        if (!empty($noStageTasks)) {
+            $stagesData[] = [
+                'id' => 'stage_no',
+                'index' => -1,
+                'name' => 'Без этапа',
+                'tasks' => $noStageTasks,
             ];
         }
         
         return $this->render('mind-map', [
             'model' => $model,
-            'tasks' => $tasksData,
+            'stagesData' => $stagesData,
         ]);
     }
 

@@ -6,7 +6,7 @@ use app\models\Project;
 
 /** @var yii\web\View $this */
 /** @var app\models\Project $model */
-/** @var array $tasks */
+/** @var array $stagesData этапы из ТЗ с задачами: [ ['id','index','name','tasks'=>[]], ... ] */
 
 $this->title = 'Mind Map: ' . $model->title;
 $this->params['breadcrumbs'][] = ['label' => 'Проекты', 'url' => ['project/index']];
@@ -29,7 +29,7 @@ $this->registerJsFile('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.
                     <h1 class="mb-0"><?= Html::encode($this->title) ?></h1>
                     <p class="text-muted mb-0">
                         <i class="fas fa-project-diagram me-2"></i>
-                        Визуализация структуры проекта, целей и задач
+                        Этапы (из ТЗ) и задачи проекта. При открытии этапа видны его задачи.
                     </p>
                 </div>
                 <div>
@@ -63,16 +63,18 @@ $this->registerJsFile('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Данные для mind map
+    // Данные: этапы из ТЗ и задачи (подзадачи не показываем)
     const projectData = {
         id: 'project',
         title: <?= json_encode($model->title, JSON_UNESCAPED_UNICODE) ?>,
         description: <?= json_encode($model->description ?? '', JSON_UNESCAPED_UNICODE) ?>
     };
+    const stagesData = <?= json_encode($stagesData ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    const taskViewBaseUrl = <?= json_encode(\yii\helpers\Url::to(['/task/view']), JSON_UNESCAPED_SLASHES) ?>;
+    function taskViewUrl(taskId) {
+        return taskViewBaseUrl + (taskViewBaseUrl.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(taskId);
+    }
     
-    const tasks = <?= json_encode($tasks, JSON_UNESCAPED_UNICODE) ?>;
-    
-    // Создаем узлы и связи
     const nodes = [];
     const edges = [];
     
@@ -85,198 +87,105 @@ document.addEventListener('DOMContentLoaded', function() {
         color: {
             background: '#4A90E2',
             border: '#2E5C8A',
-            highlight: {
-                background: '#5BA0F2',
-                border: '#2E5C8A'
-            }
+            highlight: { background: '#5BA0F2', border: '#2E5C8A' }
         },
-        font: {
-            size: 20,
-            color: '#FFFFFF',
-            face: 'Arial',
-            bold: true
-        },
-        widthConstraint: {
-            maximum: 300
-        },
+        font: { size: 20, color: '#FFFFFF', face: 'Arial', bold: true },
+        widthConstraint: { maximum: 300 },
         level: 0
     });
     
-    // Узлы задач проекта (квадратики)
-    tasks.forEach((task, index) => {
-        const taskId = 'task_' + task.id;
+    // Узлы: этапы (уровень 1) и задачи этапа (уровень 2, без подзадач)
+    stagesData.forEach((stage, stageIndex) => {
+        const stageId = stage.id;
         nodes.push({
-            id: taskId,
-            label: task.title,
-            title: task.description || task.title,
+            id: stageId,
+            label: stage.name,
+            title: 'Этап. Задач: ' + (stage.tasks ? stage.tasks.length : 0),
             shape: 'box',
             color: {
-                background: '#50C878',
-                border: '#2E8B57',
-                highlight: {
-                    background: '#60D888',
-                    border: '#2E8B57'
-                }
+                background: '#6A5ACD',
+                border: '#483D8B',
+                highlight: { background: '#7B68EE', border: '#483D8B' }
             },
-            font: {
-                size: 16,
-                color: '#FFFFFF',
-                face: 'Arial',
-                bold: true
-            },
-            widthConstraint: {
-                maximum: 250
-            },
+            font: { size: 16, color: '#FFFFFF', face: 'Arial', bold: true },
+            widthConstraint: { maximum: 250 },
             level: 1
         });
-        
-        // Связь от проекта к задаче
         edges.push({
             from: 'project',
-            to: taskId,
-            color: {
-                color: '#50C878',
-                highlight: '#60D888'
-            },
+            to: stageId,
+            color: { color: '#6A5ACD', highlight: '#7B68EE' },
             width: 3
         });
         
-        // Узлы подзадач задачи (квадратики) - показываем только если есть подзадачи
-        if (task.subtasks && task.subtasks.length > 0) {
-            task.subtasks.forEach((subtask, subtaskIndex) => {
-                const subtaskId = 'subtask_' + task.id + '_' + subtaskIndex;
-                const isCompleted = subtask.completed === true;
-                
-                nodes.push({
-                    id: subtaskId,
-                    label: subtask.text,
-                    title: 'Подзадача из задачи: ' + task.title + (isCompleted ? ' (Выполнена)' : ''),
-                    shape: 'box',
-                    color: {
-                        background: isCompleted ? '#90EE90' : '#FFB84D',
-                        border: isCompleted ? '#32CD32' : '#FF8C00',
-                        highlight: {
-                            background: isCompleted ? '#98FB98' : '#FFC85D',
-                            border: isCompleted ? '#32CD32' : '#FF8C00'
-                        }
-                    },
-                    font: {
-                        size: 14,
-                        color: '#000000',
-                        face: 'Arial',
-                        strikethrough: isCompleted
-                    },
-                    widthConstraint: {
-                        maximum: 200
-                    },
-                    level: 2
-                });
-                
-                // Связь от задачи к подзадаче
-                edges.push({
-                    from: taskId,
-                    to: subtaskId,
-                    color: {
-                        color: isCompleted ? '#90EE90' : '#FFB84D',
-                        highlight: isCompleted ? '#98FB98' : '#FFC85D'
-                    },
-                    width: 2,
-                    dashes: isCompleted // Пунктирная линия для выполненных
-                });
+        (stage.tasks || []).forEach((task, taskIndex) => {
+            const taskId = 'task_' + task.id;
+            nodes.push({
+                id: taskId,
+                label: task.title,
+                title: task.description || task.title,
+                shape: 'box',
+                url: taskViewUrl(task.id),
+                color: {
+                    background: '#50C878',
+                    border: '#2E8B57',
+                    highlight: { background: '#60D888', border: '#2E8B57' }
+                },
+                font: { size: 14, color: '#FFFFFF', face: 'Arial' },
+                widthConstraint: { maximum: 220 },
+                level: 2
             });
-        }
+            edges.push({
+                from: stageId,
+                to: taskId,
+                color: { color: '#50C878', highlight: '#60D888' },
+                width: 2
+            });
+        });
     });
     
-    // Если нет данных
+    // Если нет этапов/данных
     if (nodes.length === 1 && edges.length === 0) {
         nodes.push({
             id: 'empty',
-            label: 'Нет данных для отображения\n\nСоздайте задачи проекта\nи добавьте подзадачи в todo-лист',
+            label: 'Нет этапов в ТЗ\n\nДобавьте этапы в ТЗ проекта и привяжите к ним задачи',
             shape: 'box',
-            color: {
-                background: '#E0E0E0',
-                border: '#BDBDBD'
-            },
-            font: {
-                size: 14,
-                color: '#666666'
-            },
+            color: { background: '#E0E0E0', border: '#BDBDBD' },
+            font: { size: 14, color: '#666666' },
             level: 1
         });
-        
-        edges.push({
-            from: 'project',
-            to: 'empty',
-            dashes: true,
-            color: {
-                color: '#CCCCCC'
-            }
-        });
+        edges.push({ from: 'project', to: 'empty', dashes: true, color: { color: '#CCCCCC' } });
     }
     
-    // Создаем сеть
     const container = document.getElementById('mindmap-container');
-    
-    // Располагаем проект в центре
-    const centerX = 0;
-    const centerY = 0;
+    const centerX = 0, centerY = 0;
     nodes[0].x = centerX;
     nodes[0].y = centerY;
     
-    // Располагаем задачи по кругу вокруг проекта
-    const taskNodes = nodes.filter(n => n.level === 1);
-    const taskCount = taskNodes.length;
-    const radius = 300; // Радиус круга для задач
-    
-    taskNodes.forEach((node, index) => {
-        const angle = (2 * Math.PI * index) / taskCount - Math.PI / 2; // Начинаем сверху
+    // Этапы по кругу вокруг проекта
+    const stageNodes = nodes.filter(n => n.level === 1);
+    const stageCount = stageNodes.length;
+    const radius = 320;
+    stageNodes.forEach((node, index) => {
+        const angle = (2 * Math.PI * index) / stageCount - Math.PI / 2;
         node.x = centerX + radius * Math.cos(angle);
         node.y = centerY + radius * Math.sin(angle);
     });
     
-    // Располагаем подзадачи в ряд от своих задач
-    const subtaskNodes = nodes.filter(n => n.level === 2);
-    subtaskNodes.forEach((subtaskNode) => {
-        // Находим родительскую задачу
-        const parentEdge = edges.find(e => e.to === subtaskNode.id);
+    // Задачи — под своим этапом
+    const taskNodes = nodes.filter(n => n.level === 2);
+    taskNodes.forEach((taskNode) => {
+        const parentEdge = edges.find(e => e.to === taskNode.id);
         if (parentEdge) {
             const parentNode = nodes.find(n => n.id === parentEdge.from);
             if (parentNode) {
-                // Находим все подзадачи этой задачи
-                const siblingSubtasks = edges
-                    .filter(e => e.from === parentNode.id)
-                    .map(e => nodes.find(n => n.id === e.to))
-                    .filter(n => n && n.level === 2)
-                    .sort((a, b) => {
-                        // Сортируем по индексу для правильного порядка
-                        const aMatch = a.id.match(/_(\d+)$/);
-                        const bMatch = b.id.match(/_(\d+)$/);
-                        const aIndex = aMatch ? parseInt(aMatch[1]) : 0;
-                        const bIndex = bMatch ? parseInt(bMatch[1]) : 0;
-                        return aIndex - bIndex;
-                    });
-                
-                const subtaskIndex = siblingSubtasks.findIndex(n => n.id === subtaskNode.id);
-                const subtaskCount = siblingSubtasks.length;
-                const subtaskSpacing = 80; // Очень компактное расстояние между подзадачами (вертикальный список)
-                
-                if (subtaskCount > 0) {
-                    // Вычисляем направление от центра к задаче
-                    const parentAngle = Math.atan2(parentNode.y - centerY, parentNode.x - centerX);
-                    
-                    // Вычисляем начальную позицию списка (на расстоянии от задачи)
-                    const distanceFromTask = 200; // Расстояние от задачи до начала списка подзадач
-                    const listStartX = parentNode.x + distanceFromTask * Math.cos(parentAngle);
-                    const listStartY = parentNode.y + distanceFromTask * Math.sin(parentAngle);
-                    
-                    // Располагаем подзадачи вертикальным списком (вниз от задачи)
-                    // Используем перпендикулярное направление для вертикального списка
-                    const perpendicularAngle = parentAngle + Math.PI / 2;
-                    
-                    // Располагаем подзадачи вертикально друг под другом
-                    subtaskNode.x = listStartX + 0 * Math.cos(perpendicularAngle); // По горизонтали на одной линии
-                    subtaskNode.y = listStartY + subtaskIndex * subtaskSpacing; // Вертикально друг под другом
-                }
+                const siblingTasks = edges.filter(e => e.from === parentNode.id).map(e => nodes.find(n => n.id === e.to)).filter(Boolean);
+                const taskIndex = siblingTasks.findIndex(n => n.id === taskNode.id);
+                const parentAngle = Math.atan2(parentNode.y - centerY, parentNode.x - centerX);
+                const dist = 180;
+                const spacing = 70;
+                taskNode.x = parentNode.x + dist * Math.cos(parentAngle);
+                taskNode.y = parentNode.y + dist * Math.sin(parentAngle) + (taskIndex - (siblingTasks.length - 1) / 2) * spacing;
             }
         }
     });
@@ -336,9 +245,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (params.nodes.length > 0) {
             const nodeId = params.nodes[0];
             const node = nodes.find(n => n.id === nodeId);
-            if (node && node.title) {
-                // Можно добавить модальное окно с деталями
-                console.log('Clicked node:', node.title);
+            if (node && node.url) {
+                window.location = node.url; // Задача — переход на просмотр
             }
         }
     });
