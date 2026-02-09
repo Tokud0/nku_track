@@ -17,6 +17,7 @@ use app\models\Task;
  * @property string $role admin / head / top_manager / manager / executor / rector
  * @property \MongoDB\BSON\ObjectId|null $department_id ссылка на подразделение
  * @property \MongoDB\BSON\ObjectId|null $subdepartment_id ссылка на департамент внутри подразделения
+ * @property string|null $auth_key ключ для cookie «Запомнить меня»
  * @property \MongoDB\BSON\UTCDateTime $created_at
  * @property \MongoDB\BSON\UTCDateTime $updated_at
  */
@@ -52,6 +53,7 @@ class User extends ActiveRecord implements IdentityInterface
             'fio',
             'email',
             'password_hash',
+            'auth_key',
             'role',
             'department_id',
             'subdepartment_id',
@@ -80,7 +82,7 @@ class User extends ActiveRecord implements IdentityInterface
                 return $model->isNewRecord || $model->isAttributeChanged('email');
             }],
             [['role'], 'in', 'range' => [self::ROLE_ADMIN, self::ROLE_HEAD, self::ROLE_TOP_MANAGER, self::ROLE_MANAGER, self::ROLE_EXECUTOR, self::ROLE_RECTOR]],
-            [['fio', 'email', 'password_hash', 'role'], 'string'],
+            [['fio', 'email', 'password_hash', 'auth_key', 'role'], 'string'],
             [['department_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
             [['subdepartment_id'], 'exist', 'targetClass' => Department::class, 'targetAttribute' => '_id', 'skipOnEmpty' => true],
             [['subdepartment_id'], 'validateSubdepartment'],
@@ -134,6 +136,10 @@ class User extends ActiveRecord implements IdentityInterface
         if (parent::beforeSave($insert)) {
             if ($insert) {
                 $this->created_at = new \MongoDB\BSON\UTCDateTime();
+            }
+            // Генерируем auth_key для «Запомнить меня» (cookie автологина)
+            if (empty($this->auth_key)) {
+                $this->auth_key = Yii::$app->security->generateRandomString();
             }
             $this->updated_at = new \MongoDB\BSON\UTCDateTime();
             return true;
@@ -191,11 +197,11 @@ class User extends ActiveRecord implements IdentityInterface
 
     /**
      * {@inheritdoc}
+     * Используется для cookie «Запомнить меня» — без auth_key автологин не работает.
      */
     public function getAuthKey()
     {
-        // Not implemented for MongoDB
-        return null;
+        return $this->auth_key ?? null;
     }
 
     /**
@@ -203,8 +209,7 @@ class User extends ActiveRecord implements IdentityInterface
      */
     public function validateAuthKey($authKey)
     {
-        // Not implemented for MongoDB
-        return false;
+        return !empty($authKey) && $this->getAuthKey() === $authKey;
     }
 
     /**
