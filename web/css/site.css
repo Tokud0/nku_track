@@ -1,4 +1,4 @@
-/* Общие стили */
+/* Общие стили (site.css — дополняет nku-track) */
 :root {
     --primary-color: #6B8E9F;
     --secondary-color: #8B9A9F;
@@ -363,4 +363,375 @@ footer .text-muted {
 
 .site-index .text-warning {
     color: var(--warning-color) !important;
+}
+
+/* Dark theme overrides for site.css */
+[data-theme="dark"] {
+    --primary-color: #6B9EF5;
+    --secondary-color: #8E939B;
+    --success-color: #4FD68C;
+    --info-color: #5BA3E8;
+    --warning-color: #F5B04A;
+    --danger-color: #F07070;
+    --light-color: #2C3038;
+    --dark-color: #E8EAED;
+    --warm-bg: #1A1D24;
+    --warm-card: #23262E;
+    --warm-border: #3B4049;
+}
+
+[data-theme="dark"] body {
+    background-color: var(--warm-bg);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .card,
+[data-theme="dark"] .card-header {
+    background-color: var(--warm-card);
+    border-color: var(--warm-border);
+}
+
+[data-theme="dark"] .card-header {
+    background-color: var(--surface-2, #2C3038) !important;
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .form-control {
+    background-color: var(--surface, #23262E);
+    border-color: var(--warm-border);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .form-control:focus {
+    background-color: var(--surface, #23262E);
+}
+
+[data-theme="dark"] .dropdown-menu {
+    background-color: var(--surface, #23262E);
+    border-color: var(--warm-border);
+}
+
+[data-theme="dark"] .dropdown-item {
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .dropdown-item:hover {
+    background-color: var(--surface-2, #2C3038);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .dropdown-divider {
+    border-color: var(--warm-border);
+}
+
+[data-theme="dark"] .table {
+    background-color: var(--warm-card);
+}
+
+[data-theme="dark"] .table thead th {
+    background-color: var(--surface-2, #2C3038);
+    color: var(--muted, #8E939B);
+    border-color: var(--warm-border);
+}
+
+[data-theme="dark"] .table tbody td {
+    color: var(--text, #E8EAED);
+    border-color: var(--warm-border);
+    background-color: var(--surface, #23262E) !important;
+}
+
+[data-theme="dark"] .table tbody tr:hover td {
+    background-color: var(--surface-2, #2C3038) !important;
+}
+
+[data-theme="dark"] .list-group-item {
+    background-color: transparent;
+    border-color: var(--warm-border);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .list-group-item:hover {
+    background-color: var(--surface-2, #2C3038);
+}
+
+[data-theme="dark"] .breadcrumb-item,
+[data-theme="dark"] .breadcrumb-item a {
+    color: var(--muted, #8E939B);
+}
+
+[data-theme="dark"] footer {
+    background-color: var(--surface-2, #2C3038) !important;
+    border-color: var(--warm-border) !important;
+}
+
+[data-theme="dark"] footer .text-muted {
+    color: var(--muted, #8E939B) !important;
+}
+
+[data-theme="dark"] .form-check-input {
+    background-color: var(--surface, #23262E);
+    border-color: var(--warm-border);
+}
+
+[data-theme="dark"] .form-check-input:checked {
+    background-color: var(--primary, #6B9EF5);
+}
+
+[data-theme="dark"] .invalid-feedback {
+    color: var(--danger, #F07070);
+}
+
+[data-theme="dark"] .form-check-label {
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .modal-content {
+    background-color: var(--surface, #23262E);
+    border-color: var(--warm-border);
+}
+
+[data-theme="dark"] .modal-header {
+    background-color: var(--surface-2, #2C3038);
+    border-color: var(--warm-border);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .modal-body {
+    background-color: var(--surface, #23262E);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .modal-footer {
+    background-color: var(--surface-2, #2C3038);
+    border-color: var(--warm-border);
+}
+
+[data-theme="dark"] .btn-close {
+    filter: invert(1);
+}
+
+[data-theme="dark"] .alert-info {
+    background-color: rgba(91, 163, 232, 0.2);
+    border-color: var(--info, #5BA3E8);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .alert-success {
+    background-color: rgba(79, 214, 140, 0.2);
+    border-color: var(--success, #4FD68C);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .alert-warning {
+    background-color: rgba(245, 176, 74, 0.2);
+    border-color: var(--warning, #F5B04A);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .alert-danger {
+    background-color: rgba(240, 112, 112, 0.2);
+    border-color: var(--danger, #F07070);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .search-results-dropdown {
+    background-color: var(--surface, #23262E) !important;
+    border-color: var(--warm-border) !important;
+}
+
+/* Bootstrap utility overrides for dark theme */
+[data-theme="dark"] .badge.bg-white {
+    background-color: var(--surface-2, #2C3038) !important;
+    color: var(--text, #E8EAED) !important;
+}
+
+[data-theme="dark"] .text-dark {
+    color: var(--text, #E8EAED) !important;
+}
+
+[data-theme="dark"] .text-primary {
+    color: var(--primary, #6B9EF5) !important;
+}
+
+[data-theme="dark"] .nku-kanban-column__header.bg-secondary {
+    background-color: var(--secondary, #8E939B) !important;
+}
+
+[data-theme="dark"] .nku-kanban-column__header.bg-primary {
+    background-color: var(--primary, #6B9EF5) !important;
+}
+
+[data-theme="dark"] .nku-kanban-column__header.bg-warning {
+    background-color: var(--warning, #F5B04A) !important;
+}
+
+[data-theme="dark"] .nku-kanban-column__header.bg-success {
+    background-color: var(--success, #4FD68C) !important;
+}
+
+[data-theme="dark"] .nku-kanban-column__header.bg-danger {
+    background-color: var(--danger, #F07070) !important;
+}
+
+/* Kanban task cards — в inline стилях kanban.php стоит background: white */
+[data-theme="dark"] .nku-task-card {
+    background-color: var(--surface, #23262E) !important;
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .nku-task-card__title,
+[data-theme="dark"] .nku-task-card__meta {
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .tasks-list .table tbody tr td {
+    background-color: var(--surface, #23262E) !important;
+}
+
+[data-theme="dark"] .tasks-list .table tbody tr:hover td {
+    background-color: var(--surface-2, #2C3038) !important;
+}
+
+[data-theme="dark"] #mindmap-container {
+    border-color: var(--border, #3B4049) !important;
+}
+
+/* ====================================
+   Admin module — dark theme
+   ==================================== */
+[data-theme="dark"] .admin-default-index h1,
+[data-theme="dark"] .admin-default-index h3 {
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .admin-default-index .card {
+    background-color: var(--surface, #23262E);
+    border-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] .admin-default-index .card .card-title,
+[data-theme="dark"] .admin-default-index .card .card-text {
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .admin-default-index .card.bg-warning,
+[data-theme="dark"] .admin-default-index .card.bg-success,
+[data-theme="dark"] .admin-default-index .card.bg-secondary,
+[data-theme="dark"] .admin-default-index .card.bg-info {
+    border-color: rgba(255,255,255,0.2);
+}
+
+[data-theme="dark"] .user-index .table {
+    background-color: var(--surface, #23262E) !important;
+    border-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] .user-index .table thead {
+    background: var(--primary, #6B9EF5) !important;
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .user-index .table thead th {
+    border-color: rgba(255,255,255,0.2);
+}
+
+[data-theme="dark"] .user-index .table tbody tr:hover {
+    background-color: var(--surface-2, #2C3038) !important;
+}
+
+[data-theme="dark"] .user-index .table tbody td {
+    border-top-color: var(--border, #3B4049);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .user-index [style*="color: #666"],
+[data-theme="dark"] .user-index [style*="color: #999"] {
+    color: var(--muted, #8E939B) !important;
+}
+
+[data-theme="dark"] .user-search-container .input-group-text {
+    background-color: var(--surface-2, #2C3038);
+    border-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] #user-search-results {
+    background-color: var(--surface, #23262E) !important;
+    border-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] .user-search-item {
+    color: var(--text, #E8EAED);
+    border-bottom-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] .user-search-item:hover,
+[data-theme="dark"] .user-search-item.active {
+    background-color: var(--primary-weak, #2D3A52);
+    color: var(--primary, #6B9EF5);
+}
+
+[data-theme="dark"] .user-search-item i {
+    color: var(--muted, #8E939B);
+}
+
+[data-theme="dark"] .user-search-item:hover i,
+[data-theme="dark"] .user-search-item.active i {
+    color: var(--primary, #6B9EF5);
+}
+
+[data-theme="dark"] .user-search-hint,
+[data-theme="dark"] .user-search-empty {
+    color: var(--muted, #8E939B);
+}
+
+[data-theme="dark"] .search-loader {
+    background-color: var(--surface-2, #2C3038);
+}
+
+[data-theme="dark"] .department-manage-users .card {
+    border-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] .department-manage-users .card-header {
+    background-color: var(--surface-2, #2C3038) !important;
+    border-bottom-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] .badge.bg-light.text-dark {
+    background-color: var(--surface-2, #2C3038) !important;
+    color: var(--text, #E8EAED) !important;
+}
+
+[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > td {
+    background-color: var(--surface, #23262E);
+}
+
+[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(even) > td {
+    background-color: var(--surface-2, #2C3038);
+}
+
+[data-theme="dark"] .table-bordered {
+    border-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] .table-bordered th,
+[data-theme="dark"] .table-bordered td {
+    border-color: var(--border, #3B4049);
+}
+
+[data-theme="dark"] .pagination .page-link {
+    background-color: var(--surface, #23262E);
+    border-color: var(--border, #3B4049);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .pagination .page-link:hover {
+    background-color: var(--surface-2, #2C3038);
+    border-color: var(--border, #3B4049);
+    color: var(--text, #E8EAED);
+}
+
+[data-theme="dark"] .pagination .page-item.active .page-link {
+    background-color: var(--primary, #6B9EF5);
+    border-color: var(--primary, #6B9EF5);
 }

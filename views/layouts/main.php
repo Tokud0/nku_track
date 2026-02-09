@@ -22,6 +22,9 @@ $this->registerLinkTag(['rel' => 'shortcut icon', 'type' => 'image/x-icon', 'hre
 <!DOCTYPE html>
 <html lang="<?= Yii::$app->language ?>" class="h-100">
 <head>
+    <script>
+(function(){var t=localStorage.getItem('nku-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})();
+    </script>
     <title><?= Html::encode($this->title) ?></title>
     <?php $this->head() ?>
 </head>
@@ -44,7 +47,7 @@ $user = Yii::$app->user->isGuest ? null : Yii::$app->user->identity;
             <?= $content ?>
         </main>
 
-        <footer id="footer" class="py-3 bg-light border-top">
+        <footer id="footer" class="nku-footer py-3 border-top">
             <div class="container-fluid">
                 <div class="row text-muted">
                     <div class="col-md-6 text-center text-md-start">
@@ -59,6 +62,7 @@ $user = Yii::$app->user->isGuest ? null : Yii::$app->user->identity;
     </div>
 </div>
 
+<?php $this->registerJsFile('@web/js/theme-toggle.js', ['position' => \yii\web\View::POS_END]) ?>
 <?php $this->endBody() ?>
 </body>
 </html>

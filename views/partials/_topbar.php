@@ -25,8 +25,18 @@ $title = $this->title ?: Yii::$app->name;
 
     </div>
 
-    <!-- Right: notifications + user menu -->
+    <!-- Right: theme toggle + user menu -->
     <div class="nku-topbar__right">
+        <div class="nku-theme-switch" role="group" aria-label="Тема оформления">
+            <input type="checkbox" id="theme-switch" class="nku-theme-switch__input" aria-label="Тёмная тема">
+            <label for="theme-switch" class="nku-theme-switch__label" title="Переключить тему">
+                <span class="nku-theme-switch__track">
+                    <span class="nku-theme-switch__knob"></span>
+                </span>
+                <span class="nku-theme-switch__icon nku-theme-switch__icon--sun"><i class="fas fa-sun"></i></span>
+                <span class="nku-theme-switch__icon nku-theme-switch__icon--moon"><i class="fas fa-moon"></i></span>
+            </label>
+        </div>
         <?php if ($isGuest): ?>
             <a class="nku-btn nku-btn--secondary" href="<?= Html::encode(Url::to(['/site/login'])) ?>">Вход</a>
             <a class="nku-btn nku-btn--primary" href="<?= Html::encode(Url::to(['/site/signup'])) ?>">Регистрация</a>

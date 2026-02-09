@@ -419,7 +419,7 @@ $currentRoleInfo = $roleInfo[$user->role] ?? ['label' => $user->role, 'icon' => 
 
 /* Task Card */
 .nku-task-card {
-    background: white;
+    background: var(--surface, #fff);
     border-radius: var(--nku-border-radius);
     border: 1px solid var(--nku-color-border);
     margin-bottom: 0.75rem;
