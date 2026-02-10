@@ -10,6 +10,7 @@ use app\models\Department;
 use app\models\User;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
+use yii\web\UploadedFile;
 use yii\filters\VerbFilter;
 use yii\filters\AccessControl;
 use yii\web\Response;
@@ -262,6 +263,28 @@ class RoadmapController extends Controller
             $roadmap = $stage->roadmap;
             $this->checkAccess($roadmap);
 
+            // Обрабатываем файл (опционально)
+            $uploadedFile = UploadedFile::getInstanceByName('completion_file');
+            if ($uploadedFile) {
+                $allowedMimeTypes = [
+                    'application/pdf',
+                    'application/msword',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'image/png',
+                    'image/jpeg',
+                ];
+
+                if (!in_array($uploadedFile->type, $allowedMimeTypes)) {
+                    return ['success' => false, 'message' => 'Недопустимый тип файла. Разрешены: PDF, Word, PNG, JPG.'];
+                }
+
+                $fileContent = file_get_contents($uploadedFile->tempName);
+                $stage->completion_file_name = $uploadedFile->name;
+                $stage->completion_file_type = $uploadedFile->type;
+                $stage->completion_file_size = $uploadedFile->size;
+                $stage->completion_file_data = new \MongoDB\BSON\Binary($fileContent, \MongoDB\BSON\Binary::TYPE_GENERIC);
+            }
+
             // Устанавливаем завершение этапа
             $stage->is_completed = true;
             $stage->completion_format = trim($completionFormat);
@@ -275,6 +298,7 @@ class RoadmapController extends Controller
                         'id' => (string)$stage->_id,
                         'is_completed' => $stage->is_completed,
                         'completion_format' => $stage->completion_format,
+                        'has_file' => !empty($stage->completion_file_data),
                     ]
                 ];
             } else {
@@ -284,6 +308,39 @@ class RoadmapController extends Controller
         } catch (\Exception $e) {
             return ['success' => false, 'message' => 'Ошибка: ' . $e->getMessage()];
         }
+    }
+
+    /**
+     * Скачивание файла завершения этапа.
+     *
+     * @param string $id Stage ID
+     * @return Response
+     * @throws NotFoundHttpException
+     */
+    public function actionDownloadCompletion($id)
+    {
+        $stage = RoadmapStage::findOne(['_id' => new \MongoDB\BSON\ObjectId($id)]);
+        if (!$stage) {
+            throw new NotFoundHttpException('Этап не найден.');
+        }
+
+        $roadmap = $stage->roadmap;
+        $this->checkAccess($roadmap);
+
+        if (empty($stage->completion_file_data)) {
+            throw new NotFoundHttpException('Файл завершения для этого этапа не найден.');
+        }
+
+        $data = $stage->completion_file_data instanceof \MongoDB\BSON\Binary
+            ? $stage->completion_file_data->getData()
+            : $stage->completion_file_data;
+
+        $fileName = $stage->completion_file_name ?: 'document';
+        $mimeType = $stage->completion_file_type ?: 'application/octet-stream';
+
+        return Yii::$app->response->sendContentAsFile($data, $fileName, [
+            'mimeType' => $mimeType,
+        ]);
     }
 
     /**

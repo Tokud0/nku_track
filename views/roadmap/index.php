@@ -1,6 +1,8 @@
 <?php
 
 use yii\helpers\Html;
+use yii\helpers\Url;
+use app\models\User;
 
 /** @var yii\web\View $this */
 /** @var app\models\Department $department */
@@ -77,10 +79,23 @@ $this->params['breadcrumbs'][] = $this->title;
                                             <strong><i class="fas fa-check-circle me-2"></i>Этап завершен</strong>
                                             <p class="mb-0 mt-2"><strong>Формат завершения:</strong> <?= nl2br(Html::encode($stage->completion_format)) ?></p>
                                             <?php if ($stage->completed_at instanceof \MongoDB\BSON\UTCDateTime): ?>
-                                                <small class="text-muted">
+                                                <small class="text-muted d-block mt-1">
                                                     <i class="far fa-calendar me-1"></i>
                                                     Дата завершения: <?= date('d.m.Y', $stage->completed_at->toDateTime()->getTimestamp()) ?>
                                                 </small>
+                                            <?php endif; ?>
+                                            <?php if (!empty($stage->completion_file_name) && !empty($stage->completion_file_data)): ?>
+                                                <div class="mt-2">
+                                                    <strong>Файл завершения:</strong>
+                                                    <?= Html::a(
+                                                        Html::encode($stage->completion_file_name),
+                                                        ['download-completion', 'id' => (string)$stage->_id],
+                                                        [
+                                                            'class' => 'ms-1 text-decoration-underline',
+                                                            'target' => '_blank'
+                                                        ]
+                                                    ) ?>
+                                                </div>
                                             <?php endif; ?>
                                         </div>
                                     <?php endif; ?>
@@ -105,6 +120,20 @@ $this->params['breadcrumbs'][] = $this->title;
                                             <?php endforeach; ?>
                                         </ul>
                                     <?php endif; ?>
+
+                                    <?php
+                                    $currentUser = Yii::$app->user->identity;
+                                    $canComplete = $currentUser && $currentUser->role !== User::ROLE_RECTOR;
+                                    ?>
+
+                                    <?php if ($canComplete && empty($stage->is_completed)): ?>
+                                        <hr>
+                                        <button type="button"
+                                                class="btn btn-success w-100 stage-complete-open-modal"
+                                                data-stage-id="<?= (string)$stage->_id ?>">
+                                            Завершить этап и добавить отчет
+                                        </button>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         <?php endforeach; ?>
@@ -117,5 +146,120 @@ $this->params['breadcrumbs'][] = $this->title;
         </div>
     </div>
 
+<?php
+// Модальное окно для завершения этапа (один инстанс, наполняем через JS)
+?>
+<div class="modal fade" id="stage-complete-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Завершение этапа</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <form id="stage-complete-form" method="post" enctype="multipart/form-data"
+                      action="<?= Url::to(['roadmap/complete-stage']) ?>">
+                    <?= Html::hiddenInput(Yii::$app->request->csrfParam, Yii::$app->request->getCsrfToken()) ?>
+                    <input type="hidden" name="id" id="stage-complete-id">
+
+                    <div class="mb-3">
+                        <label class="form-label">Формат завершения (обязательно)</label>
+                        <textarea name="completion_format"
+                                  class="form-control"
+                                  rows="4"
+                                  required></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Документ (опционально, PDF / Word / PNG / JPG)
+                        </label>
+                        <input type="file"
+                               name="completion_file"
+                               class="form-control"
+                               accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+                        <div class="form-text">
+                            Прикрепите отчет, презентацию или другой файл, подтверждающий завершение этапа.
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success" id="stage-complete-submit">
+                    Сохранить завершение этапа
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Инициализация Bootstrap modal, если он есть
+    var modalElement = document.getElementById('stage-complete-modal');
+    var modalInstance = null;
+    if (modalElement && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        modalInstance = new bootstrap.Modal(modalElement);
+    }
+
+    // Открытие модалки из кнопок на этапах
+    document.querySelectorAll('.stage-complete-open-modal').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var stageId = this.getAttribute('data-stage-id');
+            var form = document.getElementById('stage-complete-form');
+            var idInput = document.getElementById('stage-complete-id');
+
+            if (idInput) {
+                idInput.value = stageId;
+            }
+
+            if (form) {
+                form.reset();
+            }
+
+            if (modalInstance) {
+                modalInstance.show();
+            } else if (modalElement) {
+                // Фоллбек, если Bootstrap modal недоступен
+                modalElement.style.display = 'block';
+                modalElement.classList.add('show');
+            }
+        });
+    });
+
+    // Сабмит формы из кнопки в футере модалки
+    var submitButton = document.getElementById('stage-complete-submit');
+    if (submitButton) {
+        submitButton.addEventListener('click', function () {
+            var form = document.getElementById('stage-complete-form');
+            if (!form) return;
+
+            var formData = new FormData(form);
+            var actionUrl = form.getAttribute('action');
+
+            fetch(actionUrl, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+                .then(function (response) {
+                    return response.json();
+                })
+                .then(function (data) {
+                    if (data && data.success) {
+                        window.location.reload();
+                    } else {
+                        alert(data && data.message ? data.message : 'Ошибка при завершении этапа.');
+                    }
+                })
+                .catch(function () {
+                    alert('Ошибка при завершении этапа.');
+                });
+        });
+    }
+});
+</script>
 

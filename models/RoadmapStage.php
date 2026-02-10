@@ -51,6 +51,10 @@ class RoadmapStage extends ActiveRecord
             'is_completed',
             'completion_format',
             'completed_at',
+            'completion_file_name',
+            'completion_file_type',
+            'completion_file_size',
+            'completion_file_data',
             'created_at',
             'updated_at',
         ];
@@ -65,10 +69,11 @@ class RoadmapStage extends ActiveRecord
             [['roadmap_id', 'name', 'start_month', 'end_month'], 'required'],
             [['roadmap_id'], 'exist', 'targetClass' => Roadmap::class, 'targetAttribute' => '_id'],
             [['name'], 'string', 'max' => 255],
-            [['description', 'completion_format'], 'string'],
-            [['start_month', 'end_month', 'order'], 'integer', 'min' => 0],
+            [['description', 'completion_format', 'completion_file_name', 'completion_file_type'], 'string'],
+            [['start_month', 'end_month', 'order', 'completion_file_size'], 'integer', 'min' => 0],
             [['end_month'], 'compare', 'compareAttribute' => 'start_month', 'operator' => '>='],
             [['is_completed'], 'boolean'],
+            [['completion_file_data'], 'safe'],
             [['start_date', 'end_date', 'completed_at', 'created_at', 'updated_at'], 'safe'],
         ];
     }
@@ -91,6 +96,10 @@ class RoadmapStage extends ActiveRecord
             'is_completed' => 'Завершен',
             'completion_format' => 'Формат завершения',
             'completed_at' => 'Дата завершения',
+            'completion_file_name' => 'Файл завершения - имя',
+            'completion_file_type' => 'Файл завершения - тип',
+            'completion_file_size' => 'Файл завершения - размер',
+            'completion_file_data' => 'Файл завершения - данные',
             'created_at' => 'Дата создания',
             'updated_at' => 'Дата обновления',
         ];

@@ -10,6 +10,7 @@ use app\models\GlobalProjectRole;
 use app\models\User;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
+use yii\web\UploadedFile;
 use yii\filters\VerbFilter;
 use yii\filters\AccessControl;
 use yii\web\Response;
@@ -229,6 +230,28 @@ class GlobalRoadmapController extends Controller
             $roadmap = $stage->roadmap;
             if (!$roadmap || !$roadmap->isGlobal()) {
                 return ['success' => false, 'message' => 'Этап не принадлежит глобальной дорожной карте.'];
+            }
+
+            // Обрабатываем файл (опционально)
+            $uploadedFile = UploadedFile::getInstanceByName('completion_file');
+            if ($uploadedFile) {
+                $allowedMimeTypes = [
+                    'application/pdf',
+                    'application/msword',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'image/png',
+                    'image/jpeg',
+                ];
+
+                if (!in_array($uploadedFile->type, $allowedMimeTypes)) {
+                    return ['success' => false, 'message' => 'Недопустимый тип файла. Разрешены: PDF, Word, PNG, JPG.'];
+                }
+
+                $fileContent = file_get_contents($uploadedFile->tempName);
+                $stage->completion_file_name = $uploadedFile->name;
+                $stage->completion_file_type = $uploadedFile->type;
+                $stage->completion_file_size = $uploadedFile->size;
+                $stage->completion_file_data = new \MongoDB\BSON\Binary($fileContent, \MongoDB\BSON\Binary::TYPE_GENERIC);
             }
 
             // Устанавливаем завершение этапа
