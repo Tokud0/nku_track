@@ -6,15 +6,18 @@ use Yii;
 use app\models\Project;
 use app\models\ProjectSearch;
 use app\models\ProjectSpec;
+use app\models\ProjectDocument;
 use app\models\Task;
 use app\models\Roadmap;
 use app\models\RoadmapStage;
 use app\models\RoadmapStageGoal;
 use yii\web\Controller;
 use yii\web\NotFoundHttpException;
+use yii\web\UploadedFile;
 use yii\filters\VerbFilter;
 use yii\filters\AccessControl;
 use app\models\User;
+use yii\web\Response;
 
 /**
  * ProjectController implements the CRUD actions for Project model.
@@ -40,6 +43,8 @@ class ProjectController extends Controller
                 'class' => VerbFilter::class,
                 'actions' => [
                     'delete' => ['POST'],
+                    'upload-documents' => ['POST'],
+                    'delete-document' => ['POST'],
                 ],
             ],
         ];
@@ -178,13 +183,179 @@ class ProjectController extends Controller
         }
         
         $userGlobalRole = $model->isGlobal() ? \app\models\GlobalProjectRole::getUserRole($user->_id) : null;
+
+        $documents = ProjectDocument::find()
+            ->where(['project_id' => $model->_id])
+            ->orderBy(['created_at' => SORT_DESC])
+            ->all();
+
+        $canManageDocuments = $this->canManageProjectDocuments($model, $user, $userGlobalRole);
         
         return $this->render('view', [
             'model' => $model,
             'spec' => $spec,
             'tasks' => array_values($tasks),
             'userGlobalRole' => $userGlobalRole,
+            'documents' => $documents,
+            'canManageDocuments' => $canManageDocuments,
         ]);
+    }
+
+    /**
+     * Upload multiple official documents for project (PDF/DOC/DOCX).
+     * Available for TOPs and department HEADs (and admin). Rector can only view.
+     *
+     * @param string $id Project ID
+     * @return Response
+     * @throws NotFoundHttpException
+     */
+    public function actionUploadDocuments($id)
+    {
+        $project = $this->findModel($id);
+        $user = Yii::$app->user->identity;
+
+        // Must have at least view-access to the project
+        $this->checkAccess($project);
+
+        $userGlobalRole = $project->isGlobal() ? \app\models\GlobalProjectRole::getUserRole($user->_id) : null;
+        if (!$this->canManageProjectDocuments($project, $user, $userGlobalRole)) {
+            Yii::$app->session->setFlash('error', 'У вас нет прав для загрузки документов проекта.');
+            return $this->redirect(['view', 'id' => (string)$project->_id]);
+        }
+
+        $files = UploadedFile::getInstancesByName('documents');
+        if (empty($files)) {
+            Yii::$app->session->setFlash('error', 'Файлы не выбраны.');
+            return $this->redirect(['view', 'id' => (string)$project->_id]);
+        }
+
+        $allowedMimeTypes = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+        $allowedExtensions = ['pdf', 'doc', 'docx'];
+        $maxBytes = 15 * 1024 * 1024; // keep below Mongo 16MB doc limit
+
+        $saved = 0;
+        $errors = [];
+
+        foreach ($files as $file) {
+            if (!$file) {
+                continue;
+            }
+
+            $ext = strtolower((string)$file->extension);
+            if (!in_array($ext, $allowedExtensions, true) || !in_array($file->type, $allowedMimeTypes, true)) {
+                $errors[] = 'Недопустимый тип файла: ' . $file->name . ' (разрешены PDF/DOC/DOCX).';
+                continue;
+            }
+
+            if ($file->size > $maxBytes) {
+                $errors[] = 'Слишком большой файл: ' . $file->name . ' (макс. 15 МБ).';
+                continue;
+            }
+
+            $data = @file_get_contents($file->tempName);
+            if ($data === false) {
+                $errors[] = 'Не удалось прочитать файл: ' . $file->name . '.';
+                continue;
+            }
+
+            $doc = new ProjectDocument();
+            $doc->project_id = $project->_id instanceof \MongoDB\BSON\ObjectId ? $project->_id : new \MongoDB\BSON\ObjectId((string)$project->_id);
+            $doc->uploaded_by_user_id = $user->_id;
+            $doc->file_name = $file->name;
+            $doc->file_type = $file->type;
+            $doc->file_size = (int)$file->size;
+            $doc->file_data = new \MongoDB\BSON\Binary($data, \MongoDB\BSON\Binary::TYPE_GENERIC);
+
+            if ($doc->save()) {
+                $saved++;
+            } else {
+                $firstErrors = $doc->getFirstErrors();
+                $errors[] = 'Ошибка сохранения файла ' . $file->name . ': ' . (!empty($firstErrors) ? implode(', ', $firstErrors) : 'неизвестная ошибка');
+            }
+        }
+
+        if ($saved > 0) {
+            Yii::$app->session->setFlash('success', 'Загружено документов: ' . $saved . '.');
+        }
+        if (!empty($errors)) {
+            Yii::$app->session->setFlash('error', implode("\n", $errors));
+        }
+
+        return $this->redirect(['view', 'id' => (string)$project->_id]);
+    }
+
+    /**
+     * Download uploaded project document.
+     *
+     * @param string $id Document ID
+     * @return Response
+     * @throws NotFoundHttpException
+     */
+    public function actionDownloadDocument($id)
+    {
+        $doc = ProjectDocument::findOne(['_id' => new \MongoDB\BSON\ObjectId($id)]);
+        if (!$doc) {
+            throw new NotFoundHttpException('Документ не найден.');
+        }
+
+        $project = Project::findOne(['_id' => $doc->project_id]);
+        if (!$project) {
+            throw new NotFoundHttpException('Проект не найден.');
+        }
+
+        // View access: all involved users (via project access rules) and rector
+        $this->checkAccess($project);
+
+        if (empty($doc->file_data)) {
+            throw new NotFoundHttpException('Файл документа не найден.');
+        }
+
+        $data = $doc->file_data instanceof \MongoDB\BSON\Binary ? $doc->file_data->getData() : $doc->file_data;
+
+        return Yii::$app->response->sendContentAsFile(
+            $data,
+            $doc->file_name ?: 'document',
+            ['mimeType' => $doc->file_type ?: 'application/octet-stream']
+        );
+    }
+
+    /**
+     * Delete uploaded project document (allows re-upload).
+     *
+     * @param string $id Document ID
+     * @return Response
+     * @throws NotFoundHttpException
+     */
+    public function actionDeleteDocument($id)
+    {
+        $doc = ProjectDocument::findOne(['_id' => new \MongoDB\BSON\ObjectId($id)]);
+        if (!$doc) {
+            throw new NotFoundHttpException('Документ не найден.');
+        }
+
+        $project = Project::findOne(['_id' => $doc->project_id]);
+        if (!$project) {
+            throw new NotFoundHttpException('Проект не найден.');
+        }
+
+        // Must have view access to the project
+        $this->checkAccess($project);
+
+        $user = Yii::$app->user->identity;
+        $userGlobalRole = $project->isGlobal() ? \app\models\GlobalProjectRole::getUserRole($user->_id) : null;
+        if (!$this->canManageProjectDocuments($project, $user, $userGlobalRole)) {
+            Yii::$app->session->setFlash('error', 'У вас нет прав для удаления документов проекта.');
+            return $this->redirect(['view', 'id' => (string)$project->_id]);
+        }
+
+        $doc->delete();
+        Yii::$app->session->setFlash('success', 'Документ удалён.');
+
+        return $this->redirect(['view', 'id' => (string)$project->_id]);
     }
 
     /**
@@ -635,6 +806,35 @@ class ProjectController extends Controller
         }
         
         throw new NotFoundHttpException('У вас нет доступа к этому проекту.');
+    }
+
+    /**
+     * Who can upload/delete project official documents.
+     *
+     * - Department projects: ADMIN or (HEAD/TOP_MANAGER of the same department)
+     * - Global projects: ADMIN or GLOBAL_TOP_MANAGER
+     * - Rector: view only
+     */
+    protected function canManageProjectDocuments(Project $project, User $user, $userGlobalRole = null): bool
+    {
+        if ($user->role === User::ROLE_ADMIN) {
+            return true;
+        }
+
+        if ($user->role === User::ROLE_RECTOR) {
+            return false;
+        }
+
+        if ($project->isGlobal()) {
+            return $userGlobalRole === \app\models\GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER;
+        }
+
+        if (in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER], true)) {
+            return $project->department_id && $user->department_id
+                && (string)$project->department_id === (string)$user->department_id;
+        }
+
+        return false;
     }
 }
 

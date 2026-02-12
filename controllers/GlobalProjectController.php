@@ -4,6 +4,7 @@ namespace app\controllers;
 
 use Yii;
 use app\models\Project;
+use app\models\ProjectDocument;
 use app\models\ProjectSpec;
 use app\models\Task;
 use app\models\GlobalProjectRole;
@@ -78,11 +79,21 @@ class GlobalProjectController extends Controller
         // Проверяем роль текущего пользователя в глобальном проекте
         $user = Yii::$app->user->identity;
         $userGlobalRole = GlobalProjectRole::getUserRole($user->_id);
+
+        $documents = ProjectDocument::find()
+            ->where(['project_id' => $model->_id])
+            ->orderBy(['created_at' => SORT_DESC])
+            ->all();
+
+        // Upload/delete only for admin and global TOP (rector can only view)
+        $canManageDocuments = $user->role === User::ROLE_ADMIN || $userGlobalRole === GlobalProjectRole::ROLE_GLOBAL_TOP_MANAGER;
         
         return $this->render('view', [
             'model' => $model,
             'spec' => $spec,
             'userGlobalRole' => $userGlobalRole,
+            'documents' => $documents,
+            'canManageDocuments' => $canManageDocuments,
         ]);
     }
 

@@ -7,17 +7,22 @@ use app\models\ProjectSpec;
 use app\models\Task;
 use app\models\User;
 use app\models\GlobalProjectRole;
+use app\models\ProjectDocument;
 
 /** @var yii\web\View $this */
 /** @var app\models\Project $model */
 /** @var app\models\ProjectSpec $spec */
 /** @var string|null $userGlobalRole */
+/** @var ProjectDocument[] $documents */
+/** @var bool $canManageDocuments */
 
 $this->title = $model->title;
 $this->params['breadcrumbs'][] = ['label' => 'Глобальный проект', 'url' => ['index']];
 $this->params['breadcrumbs'][] = $this->title;
 
 $user = Yii::$app->user->identity;
+$documents = $documents ?? [];
+$canManageDocuments = $canManageDocuments ?? false;
 
 // Проверка прав на редактирование: админ, глоб. руководитель, глоб. топ-менеджер
 $canEdit = $user->role === User::ROLE_ADMIN || 
@@ -188,6 +193,114 @@ foreach ($tasks as $task) {
                             </div>
                         </div>
                     <?php endif; ?>
+
+                    <div class="nku-card mt-4">
+                        <div class="nku-card__header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Документы проекта</h5>
+                            <?php if ($canManageDocuments): ?>
+                                <span class="nku-badge nku-badge--primary">
+                                    <i class="fas fa-upload"></i>
+                                    Можно загрузить
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="nku-card__body">
+                            <?php if (!empty($documents)): ?>
+                                <div class="nku-docs__list">
+                                    <?php foreach ($documents as $doc): ?>
+                                        <?php
+                                        $fileName = (string)($doc->file_name ?: 'Документ');
+                                        $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+                                        $icon = $ext === 'pdf' ? 'fa-file-pdf' : 'fa-file-word';
+                                        $iconMod = $ext === 'pdf' ? 'nku-docs__icon--pdf' : 'nku-docs__icon--word';
+
+                                        $size = (int)($doc->file_size ?? 0);
+                                        $sizeLabel = $size >= 1024 * 1024
+                                            ? number_format($size / (1024 * 1024), 2, '.', ' ') . ' МБ'
+                                            : number_format($size / 1024, 1, '.', ' ') . ' КБ';
+                                        $createdTs = ($doc->created_at instanceof \MongoDB\BSON\UTCDateTime)
+                                            ? $doc->created_at->toDateTime()->getTimestamp()
+                                            : null;
+                                        $dateLabel = $createdTs ? date('d.m.Y H:i', $createdTs) : '-';
+                                        ?>
+                                        <div class="nku-docs__item">
+                                            <div class="nku-docs__top">
+                                                <div class="nku-docs__icon <?= $iconMod ?>">
+                                                    <i class="fas <?= $icon ?>"></i>
+                                                </div>
+                                                <?php if ($canManageDocuments): ?>
+                                                    <div class="nku-docs__actions">
+                                                        <?= Html::a(
+                                                            '<i class="fas fa-trash"></i>',
+                                                            ['project/delete-document', 'id' => (string)$doc->_id],
+                                                            [
+                                                                'class' => 'nku-btn nku-btn--sm nku-btn--danger',
+                                                                'title' => 'Удалить',
+                                                                'data' => [
+                                                                    'confirm' => 'Удалить документ? Его можно будет загрузить снова.',
+                                                                    'method' => 'post',
+                                                                ],
+                                                            ]
+                                                        ) ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="nku-docs__content">
+                                                <?= Html::a(
+                                                    Html::encode($fileName),
+                                                    ['project/download-document', 'id' => (string)$doc->_id],
+                                                    ['target' => '_blank', 'class' => 'nku-docs__name']
+                                                ) ?>
+                                                <div class="nku-docs__meta">
+                                                    <?= Html::encode($sizeLabel) ?> • <?= Html::encode($dateLabel) ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="nku-empty nku-docs__empty">
+                                    <div class="nku-empty__icon">
+                                        <i class="fas fa-file-alt"></i>
+                                    </div>
+                                    <div class="nku-empty__title">Документы не загружены</div>
+                                    <div class="nku-empty__description">
+                                        Здесь будут храниться дорожная карта, паспорт проекта и другие официальные документы.
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ($canManageDocuments): ?>
+                                <form method="post" enctype="multipart/form-data"
+                                      action="<?= Url::to(['project/upload-documents', 'id' => (string)$model->_id]) ?>">
+                                    <?= Html::hiddenInput(Yii::$app->request->csrfParam, Yii::$app->request->getCsrfToken()) ?>
+                                    <div class="nku-dropzone" id="global-project-docs-dropzone">
+                                        <input type="file"
+                                               id="global-project-docs-input"
+                                               name="documents[]"
+                                               class="nku-dropzone__input"
+                                               multiple
+                                               accept=".pdf,.doc,.docx">
+                                        <div class="nku-dropzone__left">
+                                            <div class="nku-dropzone__title">Загрузка документов</div>
+                                            <div class="nku-dropzone__hint">
+                                                Перетащите файлы сюда или выберите (PDF / DOC / DOCX). Макс. 15 МБ на файл.
+                                            </div>
+                                            <div class="nku-dropzone__files" id="global-project-docs-files" style="display:none;"></div>
+                                        </div>
+                                        <div class="nku-dropzone__right">
+                                            <label for="global-project-docs-input" class="nku-btn nku-btn--secondary">
+                                                <i class="fas fa-folder-open me-2"></i>Выбрать файлы
+                                            </label>
+                                            <button type="submit" class="nku-btn nku-btn--primary nku-dropzone__submit" id="global-project-docs-submit">
+                                                <i class="fas fa-upload me-2"></i>Загрузить
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="col-md-4">
@@ -398,3 +511,63 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<?php if ($canManageDocuments): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var dropzone = document.getElementById('global-project-docs-dropzone');
+    var input = document.getElementById('global-project-docs-input');
+    var filesBox = document.getElementById('global-project-docs-files');
+    var submitBtn = document.getElementById('global-project-docs-submit');
+
+    if (!dropzone || !input || !filesBox || !submitBtn) return;
+
+    function renderFiles(files) {
+        filesBox.innerHTML = '';
+        if (!files || files.length === 0) {
+            filesBox.style.display = 'none';
+            submitBtn.disabled = true;
+            return;
+        }
+
+        Array.prototype.forEach.call(files, function (f) {
+            var chip = document.createElement('span');
+            chip.className = 'nku-dropzone__filechip';
+            var sizeMb = f.size / (1024 * 1024);
+            var sizeLabel = sizeMb >= 1 ? (sizeMb.toFixed(2) + ' МБ') : ((f.size / 1024).toFixed(1) + ' КБ');
+            chip.textContent = f.name + ' • ' + sizeLabel;
+            filesBox.appendChild(chip);
+        });
+        filesBox.style.display = 'flex';
+        submitBtn.disabled = false;
+    }
+
+    input.addEventListener('change', function () {
+        renderFiles(input.files);
+    });
+
+    dropzone.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        dropzone.classList.add('is-dragover');
+    });
+    dropzone.addEventListener('dragleave', function () {
+        dropzone.classList.remove('is-dragover');
+    });
+    dropzone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        dropzone.classList.remove('is-dragover');
+        if (!e.dataTransfer || !e.dataTransfer.files) return;
+
+        try {
+            input.files = e.dataTransfer.files;
+        } catch (err) {
+            // Some browsers restrict assigning files programmatically
+        }
+        renderFiles(input.files || e.dataTransfer.files);
+    });
+
+    // Initial state
+    renderFiles(input.files);
+});
+</script>
+<?php endif; ?>
