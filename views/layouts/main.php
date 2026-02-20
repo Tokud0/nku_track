@@ -28,7 +28,7 @@ $this->registerLinkTag(['rel' => 'shortcut icon', 'type' => 'image/x-icon', 'hre
     <title><?= Html::encode($this->title) ?></title>
     <?php $this->head() ?>
 </head>
-<body class="h-100">
+<body class="h-100" data-app-url="<?= Html::encode(Yii::$app->request->baseUrl) ?>">
 <?php $this->beginBody() ?>
 
 <?php

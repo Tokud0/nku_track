@@ -86,6 +86,11 @@ $brandUrl = Yii::$app->homeUrl;
                     <i class="fas fa-right-from-bracket" aria-hidden="true"></i> <span>Выход</span>
                 </button>
             <?= Html::endForm() ?>
+
+            <div class="nku-nav__section">ИИ помощник</div>
+            <a class="nku-nav__item nku-nav__item--scroll" href="<?= Html::encode(Url::to(['/chat/index'])) ?>">
+                <i class="fas fa-comments" aria-hidden="true"></i> <span>Scroll</span>
+            </a>
         <?php endif; ?>
     </nav>
 </aside>

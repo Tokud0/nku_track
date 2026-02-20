@@ -109,6 +109,18 @@ $this->params['breadcrumbs'][] = $this->title;
                         </div>
                     </div>
                 </div>
+
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="glyphicon glyphicon-file"></i> Файлы для чат-бота
+                            </h5>
+                            <p class="card-text">Загрузка файлов в базу знаний чат-бота. Бот отвечает по содержимому загруженных документов.</p>
+                            <?= Html::a('Перейти к управлению', ['chatbot-file/index'], ['class' => 'btn btn-primary']) ?>
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Здесь можно добавить другие действия в будущем -->
                 <!--
