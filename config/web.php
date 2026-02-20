@@ -92,6 +92,8 @@ $config = [
                 // Заявки на прикрепление к задаче
                 'task-executor-request/<id:[a-f0-9]{24}>/<action:\w+>' => 'task-executor-request/<action>',
                 'task-executor-request/<action:\w+>' => 'task-executor-request/<action>',
+                'chat' => 'chat/index',
+                'chat/send' => 'chat/send',
             ],
         ],
     ],
