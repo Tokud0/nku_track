@@ -245,6 +245,12 @@ class ProjectController extends Controller
                 continue;
             }
 
+            $tempPath = $file->tempName ?? '';
+            if ($tempPath === '' || !is_uploaded_file($tempPath)) {
+                $errors[] = 'Файл не получен: ' . $file->name . '. Увеличьте в php.ini upload_max_filesize и post_max_size (например до 16M и 20M) и перезапустите сервер.';
+                continue;
+            }
+
             $ext = strtolower((string)$file->extension);
             if (!in_array($ext, $allowedExtensions, true)) {
                 $errors[] = 'Недопустимое расширение: ' . $file->name . ' (разрешены PDF/DOC/DOCX).';
@@ -254,10 +260,10 @@ class ProjectController extends Controller
             // Для больших файлов браузер/прокси часто шлёт пустой MIME или application/octet-stream — проверяем по содержимому
             $mime = $file->type;
             if (empty($mime) || $mime === 'application/octet-stream') {
-                if (function_exists('finfo_open') && is_string($file->tempName) && is_file($file->tempName)) {
+                if (function_exists('finfo_open') && $tempPath !== '' && is_file($tempPath)) {
                     $finfo = finfo_open(FILEINFO_MIME_TYPE);
                     if ($finfo) {
-                        $detected = finfo_file($finfo, $file->tempName);
+                        $detected = finfo_file($finfo, $tempPath);
                         finfo_close($finfo);
                         if (!empty($detected) && in_array($detected, $allowedMimeTypes, true)) {
                             $mime = $detected;
@@ -283,7 +289,7 @@ class ProjectController extends Controller
                 continue;
             }
 
-            $data = @file_get_contents($file->tempName);
+            $data = @file_get_contents($tempPath);
             if ($data === false) {
                 $errors[] = 'Не удалось прочитать файл: ' . $file->name . '.';
                 continue;
