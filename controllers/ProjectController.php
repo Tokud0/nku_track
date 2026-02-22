@@ -246,8 +246,35 @@ class ProjectController extends Controller
             }
 
             $ext = strtolower((string)$file->extension);
-            if (!in_array($ext, $allowedExtensions, true) || !in_array($file->type, $allowedMimeTypes, true)) {
-                $errors[] = 'Недопустимый тип файла: ' . $file->name . ' (разрешены PDF/DOC/DOCX).';
+            if (!in_array($ext, $allowedExtensions, true)) {
+                $errors[] = 'Недопустимое расширение: ' . $file->name . ' (разрешены PDF/DOC/DOCX).';
+                continue;
+            }
+
+            // Для больших файлов браузер/прокси часто шлёт пустой MIME или application/octet-stream — проверяем по содержимому
+            $mime = $file->type;
+            if (empty($mime) || $mime === 'application/octet-stream') {
+                if (function_exists('finfo_open') && is_string($file->tempName) && is_file($file->tempName)) {
+                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                    if ($finfo) {
+                        $detected = finfo_file($finfo, $file->tempName);
+                        finfo_close($finfo);
+                        if (!empty($detected) && in_array($detected, $allowedMimeTypes, true)) {
+                            $mime = $detected;
+                        }
+                    }
+                }
+                // Если MIME так и не определили — разрешаем по расширению для наших форматов (типично для больших загрузок)
+                if (empty($mime) || $mime === 'application/octet-stream') {
+                    $mime = [
+                        'pdf' => 'application/pdf',
+                        'doc' => 'application/msword',
+                        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    ][$ext] ?? $mime;
+                }
+            }
+            if (empty($mime) || !in_array($mime, $allowedMimeTypes, true)) {
+                $errors[] = 'Недопустимый тип файла: ' . $file->name . ' (разрешены PDF/DOC/DOCX). Получен тип: ' . ($mime ?: 'не определён') . '.';
                 continue;
             }
 
@@ -266,7 +293,7 @@ class ProjectController extends Controller
             $doc->project_id = $project->_id instanceof \MongoDB\BSON\ObjectId ? $project->_id : new \MongoDB\BSON\ObjectId((string)$project->_id);
             $doc->uploaded_by_user_id = $user->_id;
             $doc->file_name = $file->name;
-            $doc->file_type = $file->type;
+            $doc->file_type = $mime;
             $doc->file_size = (int)$file->size;
             $doc->file_data = new \MongoDB\BSON\Binary($data, \MongoDB\BSON\Binary::TYPE_GENERIC);
 

@@ -281,7 +281,7 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="executor_type" id="executor_type_user_department" value="user_from_department" <?= $currentExecutorType === 'user_from_department' ? 'checked' : '' ?>>
                         <label class="form-check-label" for="executor_type_user_department">
-                            Один человек из подразделения
+                            Люди из подразделения (множественный выбор)
                         </label>
                     </div>
                     <div class="form-check">
@@ -293,7 +293,7 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="executor_type" id="executor_type_user_subdepartment" value="user_from_subdepartment" <?= $currentExecutorType === 'user_from_subdepartment' ? 'checked' : '' ?>>
                         <label class="form-check-label" for="executor_type_user_subdepartment">
-                            Один человек из департамента
+                            Люди из департамента (множественный выбор)
                         </label>
                     </div>
                     <div class="form-check">
@@ -330,7 +330,16 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                 if ($u) $selectedAnyExecutors[] = ['id' => $uidStr, 'text' => $u->fio . ' (' . $u->email . ')'];
             }
             $anyExecutorIdsJson = json_encode(array_column($selectedAnyExecutors, 'id'));
+            $initialExecutorIdsJson = '[]';
+            if ($currentExecutorType === 'search_any') {
+                $initialExecutorIdsJson = $anyExecutorIdsJson;
+            } elseif ($currentExecutorType === 'user_from_department' && $currentExecutorId) {
+                $initialExecutorIdsJson = json_encode([$currentExecutorId]);
+            } elseif ($currentExecutorType === 'user_from_subdepartment' && $currentExecutorId) {
+                $initialExecutorIdsJson = json_encode([$currentExecutorId]);
+            }
             ?>
+            <input type="hidden" name="Task[executor_user_ids]" id="task-executor-user-ids-main" value="<?= Html::encode($initialExecutorIdsJson) ?>">
 
             <div id="executor_search_any_field" style="display: <?= $currentExecutorType === 'search_any' ? 'block' : 'none' ?>;">
                 <div class="form-group field-task-executor_any_user_ids any-executor-search-wrapper">
@@ -353,7 +362,7 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                                 <i class="fas fa-spinner fa-spin"></i>
                             </span>
                         </div>
-                        <input type="hidden" name="Task[executor_user_ids]" id="any-executor-ids-input" value="<?= Html::encode($anyExecutorIdsJson) ?>">
+                        <input type="hidden" id="any-executor-ids-input" value="<?= Html::encode($anyExecutorIdsJson) ?>">
                         <div id="any-executor-search-results" class="any-executor-search-results"></div>
                         <div class="alert alert-info mt-2 small">
                             Сотрудник без подразделения прикрепляется к задаче сразу. Сотрудник из другого подразделения — после одобрения заявки его руководителем или топ-менеджером.
@@ -417,10 +426,24 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
             ?>
 
             <div id="executor_user_from_department_field" style="display: <?= in_array($currentExecutorType, ['user_from_department']) ? 'block' : 'none' ?>;">
-                <?= $form->field($model, 'executor_user_from_department_id')->dropDownList(
-                    $usersFromDepartmentList,
-                    ['prompt' => 'Выберите пользователя из подразделения']
-                ) ?>
+                <div class="form-group">
+                    <label class="control-label">Исполнители из подразделения</label>
+                    <div class="executor-from-department-list border rounded p-3" style="max-height: 220px; overflow-y: auto;">
+                        <?php
+                        $checkedDeptIds = ($currentExecutorType === 'user_from_department' && $currentExecutorId) ? [$currentExecutorId] : [];
+                        foreach ($usersFromDepartmentList as $uid => $label):
+                            $checked = in_array($uid, $checkedDeptIds) ? ' checked' : '';
+                        ?>
+                            <div class="form-check">
+                                <input class="form-check-input executor-from-department-cb" type="checkbox" value="<?= Html::encode($uid) ?>" id="cb_dept_<?= Html::encode($uid) ?>"<?= $checked ?>>
+                                <label class="form-check-label" for="cb_dept_<?= Html::encode($uid) ?>"><?= Html::encode($label) ?></label>
+                            </div>
+                        <?php endforeach; ?>
+                        <?php if (empty($usersFromDepartmentList)): ?>
+                            <p class="text-muted small mb-0">Нет пользователей в подразделении</p>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
 
             <div id="executor_subdepartment_field" style="display: <?= in_array($currentExecutorType, ['subdepartment']) ? 'block' : 'none' ?>;">
@@ -445,16 +468,20 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                     ) ?>
                 </div>
                 <div id="user_from_subdepartment_select_container" style="margin-top: 15px; display: <?= $selectedSubdepartmentForUser ? 'block' : 'none' ?>;">
-                    <?php
-                    $currentUsersFromSubdeptList = [];
-                    if ($selectedSubdepartmentForUser && isset($usersBySubdepartment[$selectedSubdepartmentForUser])) {
-                        $currentUsersFromSubdeptList = $usersBySubdepartment[$selectedSubdepartmentForUser];
-                    }
-                    ?>
-                    <?= $form->field($model, 'executor_user_from_subdepartment_id')->dropDownList(
-                        $currentUsersFromSubdeptList,
-                        ['prompt' => 'Выберите пользователя из выбранного департамента', 'id' => 'task-executor_user_from_subdepartment_id']
-                    )->label('Пользователь из департамента') ?>
+                    <label class="control-label">Исполнители из департамента</label>
+                    <div class="executor-from-subdepartment-list border rounded p-3 mt-1" style="max-height: 220px; overflow-y: auto;">
+                        <?php
+                        if ($selectedSubdepartmentForUser && isset($usersBySubdepartment[$selectedSubdepartmentForUser])):
+                            $checkedSubdeptIds = ($currentExecutorType === 'user_from_subdepartment' && $currentExecutorId) ? [$currentExecutorId] : [];
+                            foreach ($usersBySubdepartment[$selectedSubdepartmentForUser] as $uid => $userName):
+                                $checked = in_array($uid, $checkedSubdeptIds) ? ' checked' : '';
+                        ?>
+                            <div class="form-check">
+                                <input class="form-check-input executor-from-subdepartment-cb" type="checkbox" value="<?= Html::encode($uid) ?>" id="cb_sub_<?= Html::encode($uid) ?>"<?= $checked ?>>
+                                <label class="form-check-label" for="cb_sub_<?= Html::encode($uid) ?>"><?= Html::encode($userName) ?></label>
+                            </div>
+                        <?php endforeach; endif; ?>
+                    </div>
                 </div>
             </div>
 
@@ -536,6 +563,22 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
             
             var usersBySubdepartment = {$usersBySubdepartmentJson};
             var currentSubdepartmentId = '{$selectedSubdepartmentForUser}';
+            var mainExecutorIdsInput = document.getElementById('task-executor-user-ids-main');
+            
+            function collectExecutorFromDepartmentIds() {
+                if (!mainExecutorIdsInput) return;
+                var ids = [];
+                $('.executor-from-department-cb:checked').each(function() { ids.push($(this).val()); });
+                mainExecutorIdsInput.value = JSON.stringify(ids);
+            }
+            function collectExecutorFromSubdepartmentIds() {
+                if (!mainExecutorIdsInput) return;
+                var ids = [];
+                $('.executor-from-subdepartment-cb:checked').each(function() { ids.push($(this).val()); });
+                mainExecutorIdsInput.value = JSON.stringify(ids);
+            }
+            
+            $('.executor-from-department-cb').on('change', function() { collectExecutorFromDepartmentIds(); });
             
             $('input[name=\"executor_type\"]').on('change', function() {
                 var type = $(this).val();
@@ -543,14 +586,15 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                 $('#executor_subdepartment_field').hide();
                 $('#executor_user_from_subdepartment_field').hide();
                 $('#executor_search_any_field').hide();
-                $('#task-executor_user_from_department_id').val('');
                 $('#task-executor_subdepartment_id').val('');
-                $('#task-executor_user_from_subdepartment_id').val('');
                 $('#subdepartment_select').val('');
                 $('#user_from_subdepartment_select_container').hide();
+                $('.executor-from-subdepartment-list').empty();
+                if (mainExecutorIdsInput) mainExecutorIdsInput.value = '[]';
                 
                 if (type === 'user_from_department') {
                     $('#executor_user_from_department_field').show();
+                    collectExecutorFromDepartmentIds();
                 } else if (type === 'subdepartment') {
                     $('#executor_subdepartment_field').show();
                 } else if (type === 'user_from_subdepartment') {
@@ -558,6 +602,7 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                     if (currentSubdepartmentId) {
                         $('#subdepartment_select').val(currentSubdepartmentId).trigger('change');
                     }
+                    collectExecutorFromSubdepartmentIds();
                 } else if (type === 'search_any') {
                     $('#executor_search_any_field').show();
                 }
@@ -565,24 +610,31 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
             
             $('#subdepartment_select').on('change', function() {
                 var subdepartmentId = $(this).val();
-                var userSelect = $('#task-executor_user_from_subdepartment_id');
-                userSelect.empty();
-                userSelect.append('<option value=\"\">Выберите пользователя из выбранного департамента</option>');
+                var container = $('.executor-from-subdepartment-list');
+                container.empty();
                 
                 if (subdepartmentId && usersBySubdepartment[subdepartmentId]) {
                     $.each(usersBySubdepartment[subdepartmentId], function(userId, userName) {
-                        userSelect.append('<option value=\"' + userId + '\">' + userName + '</option>');
+                        var safeName = $('<div/>').text(userName).html();
+                        container.append(
+                            '<div class=\"form-check\">' +
+                            '<input class=\"form-check-input executor-from-subdepartment-cb\" type=\"checkbox\" value=\"' + userId + '\" id=\"cb_sub_' + userId + '\">' +
+                            '<label class=\"form-check-label\" for=\"cb_sub_' + userId + '\">' + safeName + '</label></div>'
+                        );
+                    });
+                    $(document).off('change.executorSubdept').on('change.executorSubdept', '.executor-from-subdepartment-cb', function() {
+                        collectExecutorFromSubdepartmentIds();
                     });
                     $('#user_from_subdepartment_select_container').show();
                 } else {
                     $('#user_from_subdepartment_select_container').hide();
                 }
+                collectExecutorFromSubdepartmentIds();
             });
             
-            // Инициализация при загрузке
-            if (currentSubdepartmentId) {
-                $('#subdepartment_select').trigger('change');
-            }
+            // Инициализация при загрузке — синхронизируем скрытое поле с выбранными чекбоксами (PHP уже отрисовал список при user_from_subdepartment)
+            collectExecutorFromDepartmentIds();
+            collectExecutorFromSubdepartmentIds();
             ");
             ?>
             <script>
@@ -593,7 +645,7 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                     var searchInput = document.getElementById('any-executor-search');
                     if (!searchInput) return;
                     var resultsDiv = document.getElementById('any-executor-search-results');
-                    var executorIdsInput = document.getElementById('any-executor-ids-input');
+                    var executorIdsInput = document.getElementById('task-executor-user-ids-main');
                     var selectedExecutorsDiv = document.getElementById('selected-any-executors');
                     var loader = document.querySelector('.any-search-loader');
                     var searchButton = document.getElementById('any-executor-search-button');
@@ -681,12 +733,18 @@ $subtasks = is_array($model->subtasks) ? $model->subtasks : [];
                     var form = searchInput.closest('form');
                     if (form) {
                         form.addEventListener('submit', function() {
+                            var mainInput = document.getElementById('task-executor-user-ids-main');
                             var searchAnyChecked = document.getElementById('executor_type_search_any') && document.getElementById('executor_type_search_any').checked;
-                            if (!searchAnyChecked) executorIdsInput.value = '[]';
-                            else {
-                                var dept = document.getElementById('task-executor_user_from_department_id'); if (dept) dept.value = '';
-                                var sub = document.getElementById('task-executor_subdepartment_id'); if (sub) sub.value = '';
-                                var subUser = document.getElementById('task-executor_user_from_subdepartment_id'); if (subUser) subUser.value = '';
+                            var typeUserDept = document.getElementById('executor_type_user_department') && document.getElementById('executor_type_user_department').checked;
+                            var typeUserSubdept = document.getElementById('executor_type_user_subdepartment') && document.getElementById('executor_type_user_subdepartment').checked;
+                            if (typeUserDept && mainInput) {
+                                var ids = []; document.querySelectorAll('.executor-from-department-cb:checked').forEach(function(cb) { ids.push(cb.value); });
+                                mainInput.value = JSON.stringify(ids);
+                            } else if (typeUserSubdept && mainInput) {
+                                var ids = []; document.querySelectorAll('.executor-from-subdepartment-cb:checked').forEach(function(cb) { ids.push(cb.value); });
+                                mainInput.value = JSON.stringify(ids);
+                            } else if (!searchAnyChecked) {
+                                if (mainInput) mainInput.value = '[]';
                             }
                         });
                     }
