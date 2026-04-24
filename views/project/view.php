@@ -135,9 +135,14 @@ foreach ($tasks as $task) {
                     <?php
                     $canFinishProject = !$model->isGlobal()
                         && $model->status !== Project::STATUS_FINISHED
-                        && in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER])
-                        && $model->department_id && $user->department_id
-                        && (string)$model->department_id === (string)$user->department_id;
+                        && (
+                            $user->role === User::ROLE_ADMIN
+                            || (
+                                in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER])
+                                && $model->department_id && $user->department_id
+                                && (string)$model->department_id === (string)$user->department_id
+                            )
+                        );
                     $allTasksDoneOrArchived = $canFinishProject
                         ? \app\controllers\ProjectController::canFinishProject($model)
                         : false;

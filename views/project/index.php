@@ -208,12 +208,13 @@ $pagination = $dataProvider->getPagination();
                                 <?php endif; ?>
                                 
                                 <?php if ($project->next_report_deadline instanceof \MongoDB\BSON\UTCDateTime): ?>
-                                    <?php 
+                                    <?php
                                     $deadline = $project->next_report_deadline->toDateTime()->getTimestamp();
                                     $now = time();
                                     $daysLeft = floor(($deadline - $now) / (24 * 60 * 60));
-                                    $isOverdue = $daysLeft < 0;
-                                    $isUrgent = $daysLeft <= 3 && !$isOverdue;
+                                    $projectClosed = in_array($project->status, [\app\models\Project::STATUS_FINISHED, \app\models\Project::STATUS_FROZEN]);
+                                    $isOverdue = $daysLeft < 0 && !$projectClosed;
+                                    $isUrgent = $daysLeft <= 3 && !$isOverdue && !$projectClosed;
                                     ?>
                                     <div class="d-flex align-items-center mb-2">
                                         <i class="fas fa-clock text-muted me-2" style="width: 20px;"></i>

@@ -694,10 +694,16 @@ class ProjectController extends Controller
         $model = $this->findModel($id);
         $user = Yii::$app->user->identity;
 
-        $allowedRoles = [User::ROLE_HEAD, User::ROLE_TOP_MANAGER];
+        if ($model->isGlobal()) {
+            Yii::$app->session->setFlash('error', 'Глобальные проекты завершаются в другом разделе.');
+            return $this->redirect(['view', 'id' => (string)$model->_id]);
+        }
+
         $sameDepartment = $model->department_id && $user->department_id &&
             (string)$model->department_id === (string)$user->department_id;
-        if (!in_array($user->role, $allowedRoles) || !$sameDepartment) {
+        $isAdmin = $user->role === User::ROLE_ADMIN;
+        $isDeptHeadOrTop = in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER]) && $sameDepartment;
+        if (!$isAdmin && !$isDeptHeadOrTop) {
             Yii::$app->session->setFlash('error', 'У вас нет прав для завершения этого проекта.');
             return $this->redirect(['view', 'id' => (string)$model->_id]);
         }
