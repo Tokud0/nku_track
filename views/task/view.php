@@ -198,8 +198,8 @@ $comments = Comment::find()
                             $dueDate = $model->due_date->toDateTime()->getTimestamp();
                             $now = time();
                             $daysLeft = floor(($dueDate - $now) / (24 * 60 * 60));
-                            $isOverdue = $daysLeft < 0;
-                            $isUrgent = $daysLeft <= 3 && !$isOverdue;
+                            $isOverdue = $daysLeft < 0 && $model->status !== Task::STATUS_DONE;
+                            $isUrgent = $daysLeft <= 3 && !$isOverdue && $model->status !== Task::STATUS_DONE;
                             ?>
                             <div class="p-2 rounded <?= $isOverdue ? 'bg-danger bg-opacity-10' : ($isUrgent ? 'bg-warning bg-opacity-10' : 'bg-light') ?>">
                                 <div class="fw-bold <?= $isOverdue ? 'text-danger' : ($isUrgent ? 'text-warning' : 'text-success') ?>">
@@ -592,7 +592,7 @@ $comments = Comment::find()
                         <?php if ($model->due_date instanceof \MongoDB\BSON\UTCDateTime): ?>
                             <?php
                             $dueDate = $model->due_date->toDateTime()->getTimestamp();
-                            $isOverdue = $dueDate < time();
+                            $isOverdue = $dueDate < time() && $model->status !== Task::STATUS_DONE;
                             ?>
                             <div class="nku-timeline__item">
                                 <div class="nku-timeline__icon nku-timeline__icon--<?= $isOverdue ? 'danger' : 'warning' ?>">

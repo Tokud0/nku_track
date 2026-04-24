@@ -45,12 +45,12 @@ use app\models\User;
                 $dueDate = $task->due_date->toDateTime()->getTimestamp();
                 $now = time();
                 $daysLeft = floor(($dueDate - $now) / (24 * 60 * 60));
-                $isOverdue = $daysLeft < 0;
-                $isUrgent = $daysLeft >= 0 && $daysLeft <= 3;
+                $isOverdue = $daysLeft < 0 && $task->status !== Task::STATUS_DONE;
+                $isUrgent = $daysLeft >= 0 && $daysLeft <= 3 && $task->status !== Task::STATUS_DONE;
                 ?>
                 <div class="mb-2">
                     <small class="<?= $isOverdue ? 'text-danger' : ($isUrgent ? 'text-warning' : 'text-muted') ?>">
-                        <i class="fas fa-calendar"></i> 
+                        <i class="fas fa-calendar"></i>
                         <?= date('d.m.Y', $dueDate) ?>
                         <?php if ($isOverdue): ?>
                             <span class="badge badge-danger">Просрочено</span>

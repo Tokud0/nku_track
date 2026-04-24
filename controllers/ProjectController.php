@@ -45,6 +45,7 @@ class ProjectController extends Controller
                     'delete' => ['POST'],
                     'upload-documents' => ['POST'],
                     'delete-document' => ['POST'],
+                    'finish' => ['POST'],
                 ],
             ],
         ];
@@ -677,6 +678,66 @@ class ProjectController extends Controller
             'model' => $model,
             'tasks' => $tasks,
         ]);
+    }
+
+    /**
+     * Завершение проекта (перевод в STATUS_FINISHED).
+     * Только HEAD/TOP_MANAGER своего подразделения. Все задачи проекта должны
+     * быть либо в статусе done, либо в архиве.
+     *
+     * @param string $id
+     * @return \yii\web\Response
+     * @throws NotFoundHttpException
+     */
+    public function actionFinish($id)
+    {
+        $model = $this->findModel($id);
+        $user = Yii::$app->user->identity;
+
+        $allowedRoles = [User::ROLE_HEAD, User::ROLE_TOP_MANAGER];
+        $sameDepartment = $model->department_id && $user->department_id &&
+            (string)$model->department_id === (string)$user->department_id;
+        if (!in_array($user->role, $allowedRoles) || !$sameDepartment) {
+            Yii::$app->session->setFlash('error', 'У вас нет прав для завершения этого проекта.');
+            return $this->redirect(['view', 'id' => (string)$model->_id]);
+        }
+
+        if ($model->status === Project::STATUS_FINISHED) {
+            return $this->redirect(['view', 'id' => (string)$model->_id]);
+        }
+
+        if (!self::canFinishProject($model)) {
+            Yii::$app->session->setFlash('error', 'Нельзя завершить проект: не все задачи выполнены или находятся в архиве.');
+            return $this->redirect(['view', 'id' => (string)$model->_id]);
+        }
+
+        $model->status = Project::STATUS_FINISHED;
+        if ($model->save(false)) {
+            Yii::$app->session->setFlash('success', 'Проект успешно завершён.');
+        } else {
+            Yii::$app->session->setFlash('error', 'Ошибка при сохранении проекта.');
+        }
+        return $this->redirect(['view', 'id' => (string)$model->_id]);
+    }
+
+    /**
+     * Проверяет, можно ли завершить проект: должна быть хотя бы одна задача,
+     * и каждая из них либо STATUS_DONE, либо is_archived === true.
+     */
+    public static function canFinishProject(Project $model): bool
+    {
+        $tasks = Task::find()->where(['project_id' => $model->_id])->all();
+        if (empty($tasks)) {
+            return false;
+        }
+        foreach ($tasks as $task) {
+            $isDone = $task->status === Task::STATUS_DONE;
+            $isArchived = $task->is_archived === true;
+            if (!$isDone && !$isArchived) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

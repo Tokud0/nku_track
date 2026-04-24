@@ -289,8 +289,8 @@ $currentRoleInfo = $roleInfo[$user->role] ?? ['label' => $user->role, 'icon' => 
                                                 $dueDate = $task->due_date->toDateTime()->getTimestamp();
                                                 $now = time();
                                                 $daysLeft = floor(($dueDate - $now) / (24 * 60 * 60));
-                                                $isOverdue = $daysLeft < 0;
-                                                $isUrgent = $daysLeft >= 0 && $daysLeft <= 3;
+                                                $isOverdue = $daysLeft < 0 && $task->status !== Task::STATUS_DONE;
+                                                $isUrgent = $daysLeft >= 0 && $daysLeft <= 3 && $task->status !== Task::STATUS_DONE;
                                                 ?>
                                                 <div class="nku-task-card__meta mb-2">
                                                     <i class="fas fa-calendar text-muted me-1"></i>

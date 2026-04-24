@@ -132,24 +132,56 @@ foreach ($tasks as $task) {
                         ['mind-map', 'id' => (string)$model->_id],
                         ['class' => 'nku-btn nku-btn--info mb-2']
                     ) ?>
-                    <?php if ($canEdit): ?>
-                        <div class="d-flex gap-2">
-                            <?= Html::a(
-                                '<i class="fas fa-edit me-2"></i>Редактировать',
-                                ['update', 'id' => (string)$model->_id],
-                                ['class' => 'nku-btn nku-btn--primary']
-                            ) ?>
-                            <?= Html::a(
-                                '<i class="fas fa-trash me-2"></i>Удалить',
-                                ['delete', 'id' => (string)$model->_id],
-                                [
-                                    'class' => 'nku-btn nku-btn--danger',
-                                    'data' => [
-                                        'confirm' => 'Вы уверены, что хотите удалить этот проект?',
-                                        'method' => 'post',
-                                    ],
-                                ]
-                            ) ?>
+                    <?php
+                    $canFinishProject = !$model->isGlobal()
+                        && $model->status !== Project::STATUS_FINISHED
+                        && in_array($user->role, [User::ROLE_HEAD, User::ROLE_TOP_MANAGER])
+                        && $model->department_id && $user->department_id
+                        && (string)$model->department_id === (string)$user->department_id;
+                    $allTasksDoneOrArchived = $canFinishProject
+                        ? \app\controllers\ProjectController::canFinishProject($model)
+                        : false;
+                    ?>
+                    <?php if ($canEdit || $canFinishProject): ?>
+                        <div class="d-flex gap-2 flex-wrap justify-content-end">
+                            <?php if ($canFinishProject): ?>
+                                <?php if ($allTasksDoneOrArchived): ?>
+                                    <?= Html::a(
+                                        '<i class="fas fa-check-circle me-2"></i>Завершить проект',
+                                        ['finish', 'id' => (string)$model->_id],
+                                        [
+                                            'class' => 'nku-btn nku-btn--success',
+                                            'data' => [
+                                                'confirm' => 'Завершить проект? Статус будет изменён на «Завершен».',
+                                                'method' => 'post',
+                                            ],
+                                        ]
+                                    ) ?>
+                                <?php else: ?>
+                                    <button type="button" class="nku-btn nku-btn--success" disabled
+                                            title="Завершить можно только когда все задачи в статусе «Выполнено» или в архиве">
+                                        <i class="fas fa-check-circle me-2"></i>Завершить проект
+                                    </button>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            <?php if ($canEdit): ?>
+                                <?= Html::a(
+                                    '<i class="fas fa-edit me-2"></i>Редактировать',
+                                    ['update', 'id' => (string)$model->_id],
+                                    ['class' => 'nku-btn nku-btn--primary']
+                                ) ?>
+                                <?= Html::a(
+                                    '<i class="fas fa-trash me-2"></i>Удалить',
+                                    ['delete', 'id' => (string)$model->_id],
+                                    [
+                                        'class' => 'nku-btn nku-btn--danger',
+                                        'data' => [
+                                            'confirm' => 'Вы уверены, что хотите удалить этот проект?',
+                                            'method' => 'post',
+                                        ],
+                                    ]
+                                ) ?>
+                            <?php endif; ?>
                         </div>
                     <?php endif; ?>
                 </div>
