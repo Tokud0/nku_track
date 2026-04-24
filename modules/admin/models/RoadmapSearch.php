@@ -49,6 +49,7 @@ class RoadmapSearch extends Model
             'query' => $query,
             'pagination' => [
                 'pageSize' => 20,
+                'pageSizeLimit' => [1, 100],
             ],
             'sort' => [
                 'defaultOrder' => [

@@ -89,11 +89,10 @@ $this->params['breadcrumbs'][] = $this->title;
             </table>
         </div>
         
-        <?php
-        echo \yii\widgets\LinkPager::widget([
+        <?= $this->render('@app/modules/admin/views/_admin-pager', [
             'pagination' => $dataProvider->pagination,
-        ]);
-        ?>
+            'totalCount' => $dataProvider->totalCount,
+        ]) ?>
     <?php endif; ?>
 
     <?php Pjax::end(); ?>

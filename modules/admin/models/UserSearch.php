@@ -47,6 +47,7 @@ class UserSearch extends User
             'query' => $query,
             'pagination' => [
                 'pageSize' => 20,
+                'pageSizeLimit' => [1, 100],
             ],
             'sort' => [
                 'defaultOrder' => [
